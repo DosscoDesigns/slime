@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useSyncExternalStore, ReactNode } from "react";
 
 export interface KitAddon {
   id: string;
@@ -14,11 +14,10 @@ export interface CartItem {
   id: string;
   name: string;
   subtitle: string;
-  price: number; // dollars (total for kit including add-ons)
+  price: number;
   priceCents: number;
   image: string;
   quantity: number;
-  // Kit-specific fields
   gallons?: number;
   color?: string;
   addons?: KitAddon[];
@@ -42,7 +41,10 @@ const CartContext = createContext<CartContextType | null>(null);
 
 const CART_STORAGE_KEY = "slimeco-cart";
 
-function loadCart(): CartItem[] {
+// Custom event to notify subscribers of cart changes
+const CART_CHANGE_EVENT = "slimeco-cart-change";
+
+function readCart(): CartItem[] {
   if (typeof window === "undefined") return [];
   try {
     const stored = localStorage.getItem(CART_STORAGE_KEY);
@@ -52,64 +54,85 @@ function loadCart(): CartItem[] {
   }
 }
 
-function saveCart(items: CartItem[]) {
+function writeCart(items: CartItem[]) {
   try {
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+    // Dispatch custom event so useSyncExternalStore re-reads
+    window.dispatchEvent(new Event(CART_CHANGE_EVENT));
   } catch {
     // localStorage unavailable
   }
 }
 
+// Snapshot must return a stable reference for same data
+let cachedSnapshot: string = "[]";
+function getSnapshot(): string {
+  try {
+    const val = localStorage.getItem(CART_STORAGE_KEY) || "[]";
+    if (val !== cachedSnapshot) cachedSnapshot = val;
+    return cachedSnapshot;
+  } catch {
+    return cachedSnapshot;
+  }
+}
+
+function getServerSnapshot(): string {
+  return "[]";
+}
+
+function subscribe(callback: () => void): () => void {
+  // Listen for our own changes + cross-tab storage events
+  window.addEventListener(CART_CHANGE_EVENT, callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    window.removeEventListener(CART_CHANGE_EVENT, callback);
+    window.removeEventListener("storage", callback);
+  };
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>(loadCart);
+  const cartJson = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const items: CartItem[] = JSON.parse(cartJson);
+
   const [isOpen, setIsOpen] = useState(false);
 
-  // Persist on change
-  useEffect(() => {
-    saveCart(items);
-  }, [items]);
-
   const addItem = useCallback((item: Omit<CartItem, "quantity">) => {
-    setItems((prev) => {
-      const existing = prev.find((i) => i.id === item.id);
-      if (existing) {
-        return prev.map((i) =>
-          i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
-        );
-      }
-      return [...prev, { ...item, quantity: 1 }];
-    });
+    const prev = readCart();
+    const existing = prev.find((i) => i.id === item.id);
+    if (existing) {
+      writeCart(prev.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i)));
+    } else {
+      writeCart([...prev, { ...item, quantity: 1 }]);
+    }
     setIsOpen(true);
-  }, []);
+  }, [setIsOpen]);
 
   const removeItem = useCallback((id: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    writeCart(readCart().filter((i) => i.id !== id));
   }, []);
 
   const updateQuantity = useCallback((id: string, quantity: number) => {
+    const prev = readCart();
     if (quantity <= 0) {
-      setItems((prev) => prev.filter((i) => i.id !== id));
-      return;
+      writeCart(prev.filter((i) => i.id !== id));
+    } else {
+      writeCart(prev.map((i) => (i.id === id ? { ...i, quantity } : i)));
     }
-    setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, quantity } : i))
-    );
   }, []);
 
   const updateAddonQuantity = useCallback((itemId: string, addonId: string, quantity: number) => {
-    setItems((prev) =>
-      prev.map((item) => {
+    writeCart(
+      readCart().map((item) => {
         if (item.id !== itemId || !item.addons) return item;
         const newAddons = quantity <= 0
           ? item.addons.filter((a) => a.id !== addonId)
           : item.addons.map((a) => (a.id === addonId ? { ...a, quantity } : a));
-        const addonTotal = newAddons.reduce((s, a) => s + a.price * a.quantity, 0);
-        const addonTotalCents = newAddons.reduce((s, a) => s + a.priceCents * a.quantity, 0);
-        // Base price = original price minus old addon total
         const oldAddonTotal = item.addons.reduce((s, a) => s + a.price * a.quantity, 0);
         const oldAddonTotalCents = item.addons.reduce((s, a) => s + a.priceCents * a.quantity, 0);
         const basePrice = item.price - oldAddonTotal;
         const basePriceCents = item.priceCents - oldAddonTotalCents;
+        const addonTotal = newAddons.reduce((s, a) => s + a.price * a.quantity, 0);
+        const addonTotalCents = newAddons.reduce((s, a) => s + a.priceCents * a.quantity, 0);
         return {
           ...item,
           addons: newAddons,
@@ -128,7 +151,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [updateAddonQuantity]);
 
   const clearCart = useCallback(() => {
-    setItems([]);
+    writeCart([]);
   }, []);
 
   const totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
