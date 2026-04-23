@@ -16,7 +16,7 @@ const highlights = [
   },
   {
     title: "Content Creators",
-    description: "YouTube, TikTok, Instagram — 5 gallons of slime makes incredible content.",
+    description: "YouTube, TikTok, Instagram — slime makes for incredible content.",
     image: "https://images.unsplash.com/photo-1611162616475-46b635cb6868?w=500&h=350&fit=crop",
   },
 ];
@@ -39,21 +39,23 @@ export default function About() {
               About Us
             </span>
             <h2 className="text-4xl sm:text-5xl font-black mt-4 mb-6">
-              Born from a <span className="text-lime">backyard experiment</span>
+              Built for <span className="text-lime">the big moments</span>
             </h2>
             <p className="text-gray-400 text-lg leading-relaxed mb-6">
-              We started making slime for our local youth group and couldn&apos;t
-              believe how hard it was to find a product that actually worked at
-              scale. Store-bought kits made tiny amounts. DIY recipes were messy
-              and inconsistent.
+              We wanted to slime our youth group leaders — dump buckets over
+              their heads, blast them with sprayers, the whole show. But
+              nobody sold anything that could do that without spending a
+              fortune or mixing sketchy ingredients in a garage.
             </p>
             <p className="text-gray-400 text-lg leading-relaxed">
-              So we engineered our own formula.{" "}
+              So we made our own.{" "}
               <span className="text-white font-medium">
-                Just add water to our powder, and you get gallons of perfect
-                slime every time.
+                One pouch of our proprietary powder plus water gives you 5
+                gallons of thick, pourable, sprayable slime.
               </span>{" "}
-              No glue, no borax, no measuring cups. Just rip, pour, and play.
+              Load up a pump sprayer. Fill a bucket and send it. It&apos;s
+              safe, it washes out, and it&apos;s the most fun your group
+              will have all year.
             </p>
           </motion.div>
 

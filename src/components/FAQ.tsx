@@ -7,7 +7,7 @@ const faqs = [
   {
     question: "What is the slime made of?",
     answer:
-      "Our slime powder is a safe, non-toxic formula. Just add water and it transforms into thick, colorful slime. No glue, no borax, no complicated ingredients to measure.",
+      "Our proprietary powder is a safe, non-toxic formula. Just add water and it transforms into thick, pourable, sprayable slime. No complicated ingredients to measure — just powder and water.",
   },
   {
     question: "How much slime does each pouch make?",

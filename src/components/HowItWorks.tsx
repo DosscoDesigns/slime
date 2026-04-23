@@ -6,27 +6,20 @@ import { useRef } from "react";
 const steps = [
   {
     number: "01",
-    title: "Open Your Kit",
-    description:
-      "Each pouch contains our premium slime powder pre-mixed with vibrant color. Pick your color and tear open the pouch.",
-    icon: "📦",
-  },
-  {
-    number: "02",
     title: "Pour Into Bucket",
     description:
-      "Dump the powder into any standard 5-gallon bucket. One pouch = one bucket = 5 gallons of slime.",
+      "Tear open a pouch and dump the powder into any standard 5-gallon bucket. One pouch = one bucket = 5 gallons of slime.",
     icon: "🪣",
   },
   {
-    number: "03",
+    number: "02",
     title: "Add Water & Mix",
     description:
-      "Add about 4 gallons of water and stir with the included mixing paddle. Watch it transform in seconds.",
+      "Fill the bucket with water and stir with a mixing paddle or your hands. Watch it transform in seconds.",
     icon: "💧",
   },
   {
-    number: "04",
+    number: "03",
     title: "Go Absolutely Wild",
     description:
       "Fill up sprayers, grab buckets, and let chaos reign. Perfect for slime wars, obstacle courses, and content creation.",
@@ -62,8 +55,7 @@ export default function HowItWorks() {
             How It <span className="text-lime">Works</span>
           </h2>
           <p className="text-gray-400 max-w-xl mx-auto text-lg">
-            From box to slime war in under 5 minutes. No glue, no borax, no
-            mess-making ingredients to measure.
+            From bag to slime war in under 5 minutes. Just powder and water.
           </p>
         </motion.div>
 

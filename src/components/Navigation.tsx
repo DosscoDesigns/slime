@@ -82,7 +82,7 @@ export default function Navigation() {
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                key={totalItems}
+                key={`desktop-${totalItems}`}
               >
                 {totalItems}
               </motion.span>
@@ -109,7 +109,7 @@ export default function Navigation() {
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                key={totalItems}
+                key={`mobile-${totalItems}`}
               >
                 {totalItems}
               </motion.span>

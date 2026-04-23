@@ -7,9 +7,10 @@ import { useCart } from "@/components/CartProvider";
 export default function SuccessPage() {
   const { clearCart } = useCart();
 
-  // Clear cart on successful payment
+  // Clear cart on successful payment — both React state and localStorage directly
   useEffect(() => {
     clearCart();
+    try { localStorage.removeItem("slimeco-cart"); } catch {}
   }, [clearCart]);
 
   return (

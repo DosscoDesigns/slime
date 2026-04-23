@@ -8,77 +8,65 @@ function getStripe() {
   return new Stripe(process.env.STRIPE_SECRET_KEY);
 }
 
-const PRODUCTS: Record<
-  string,
-  { name: string; price: number; description: string }
-> = {
-  "slime-only": {
-    name: "Slime Only — 20 Gallons",
-    price: 1500,
-    description: "4 color pouches (Red, Yellow, Green, Blue)",
-  },
-  "starter-kit": {
-    name: "Starter Kit — 20 Gallons + Supplies",
-    price: 5900,
-    description: "4 color pouches, 4 buckets, 12 sprayers, 1 mixing paddle",
-  },
-  "youth-group-kit": {
-    name: "Youth Group Kit — 80 Gallons",
-    price: 19900,
-    description:
-      "16 color pouches, 16 buckets, 48 sprayers, 1 mixing paddle",
-  },
-};
+interface CartItemPayload {
+  id: string;
+  quantity: number;
+  name?: string;
+  subtitle?: string;
+  price?: number;
+  priceCents?: number;
+  gallons?: number;
+  color?: string;
+  addons?: { id: string; name: string; priceCents: number; quantity: number }[];
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // Support both single item { productId, quantity } and multi-item { items: [{ id, quantity }] }
-    const cartItems: { id: string; quantity: number }[] = body.items
+    const cartItems: CartItemPayload[] = body.items
       ? body.items
       : [{ id: body.productId, quantity: body.quantity || 1 }];
 
-    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+    let totalAmount = 0;
+    const descriptionParts: string[] = [];
 
     for (const item of cartItems) {
-      const product = PRODUCTS[item.id];
-      if (!product) {
+      if (!item.priceCents || !item.name) {
         return NextResponse.json(
-          { error: `Invalid product: ${item.id}` },
+          { error: `Invalid cart item: ${item.id}` },
           { status: 400 }
         );
       }
-      lineItems.push({
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: product.name,
-            description: product.description,
-          },
-          unit_amount: product.price,
-        },
-        quantity: item.quantity,
-      });
+      totalAmount += item.priceCents * item.quantity;
+      descriptionParts.push(
+        `${item.name}${item.quantity > 1 ? ` x${item.quantity}` : ""}`
+      );
     }
 
-    if (lineItems.length === 0) {
+    if (totalAmount === 0) {
       return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
     }
 
     const stripe = getStripe();
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: lineItems,
-      mode: "payment",
-      success_url: `${request.nextUrl.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${request.nextUrl.origin}/#products`,
-      shipping_address_collection: {
-        allowed_countries: ["US"],
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: totalAmount,
+      currency: "usd",
+      description: descriptionParts.join(", "),
+      automatic_payment_methods: { enabled: true },
+      metadata: {
+        items: JSON.stringify(
+          cartItems.map((i) => ({
+            id: i.id,
+            name: i.name,
+            qty: i.quantity,
+            cents: i.priceCents,
+          }))
+        ),
       },
     });
 
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({ clientSecret: paymentIntent.client_secret });
   } catch (error) {
     console.error("Stripe checkout error:", error);
     return NextResponse.json(

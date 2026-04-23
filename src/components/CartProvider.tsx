@@ -2,14 +2,26 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 
+export interface KitAddon {
+  id: string;
+  name: string;
+  price: number;
+  priceCents: number;
+  quantity: number;
+}
+
 export interface CartItem {
   id: string;
   name: string;
   subtitle: string;
-  price: number; // dollars
+  price: number; // dollars (total for kit including add-ons)
   priceCents: number;
   image: string;
   quantity: number;
+  // Kit-specific fields
+  gallons?: number;
+  color?: string;
+  addons?: KitAddon[];
 }
 
 interface CartContextType {
@@ -47,20 +59,13 @@ function saveCart(items: CartItem[]) {
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
+  const [items, setItems] = useState<CartItem[]>(loadCart);
   const [isOpen, setIsOpen] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
 
-  // Hydrate from localStorage after mount
+  // Persist on change
   useEffect(() => {
-    setItems(loadCart());
-    setHydrated(true);
-  }, []);
-
-  // Persist on change (after hydration)
-  useEffect(() => {
-    if (hydrated) saveCart(items);
-  }, [items, hydrated]);
+    saveCart(items);
+  }, [items]);
 
   const addItem = useCallback((item: Omit<CartItem, "quantity">) => {
     setItems((prev) => {

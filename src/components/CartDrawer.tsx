@@ -3,39 +3,48 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "./CartProvider";
 import { useState } from "react";
+import CheckoutModal from "./CheckoutModal";
 
-export default function CartDrawer() {
-  const { items, isOpen, setIsOpen, removeItem, updateQuantity, totalItems, totalPrice, clearCart } = useCart();
-  const [loading, setLoading] = useState(false);
+// Color swatch for kit items in the cart
+function KitSwatch({ color }: { color: string }) {
+  const colorHexMap: Record<string, string> = {
+    red: "#ef4444",
+    green: "#22c55e",
+    blue: "#3b82f6",
+    yellow: "#eab308",
+  };
 
-  async function handleCheckout() {
-    if (items.length === 0) return;
-    setLoading(true);
-    try {
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i) => ({
-            id: i.id,
-            quantity: i.quantity,
-          })),
-        }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert(data.error || "Something went wrong. Please try again.");
-      }
-    } catch {
-      alert("Failed to start checkout. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+  if (color === "one-of-each") {
+    return (
+      <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 flex">
+        <div className="flex-1" style={{ background: "#ef4444" }} />
+        <div className="flex-1" style={{ background: "#22c55e" }} />
+        <div className="flex-1" style={{ background: "#3b82f6" }} />
+        <div className="flex-1" style={{ background: "#eab308" }} />
+      </div>
+    );
   }
 
   return (
+    <div
+      className="w-20 h-20 rounded-xl overflow-hidden shrink-0"
+      style={{ background: colorHexMap[color] || "#a3e635" }}
+    />
+  );
+}
+
+export default function CartDrawer() {
+  const { items, isOpen, setIsOpen, removeItem, updateQuantity, totalItems, totalPrice, clearCart } = useCart();
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+
+  function handleCheckout() {
+    if (items.length === 0) return;
+    setIsOpen(false);
+    setCheckoutOpen(true);
+  }
+
+  return (
+    <>
     <AnimatePresence>
       {isOpen && (
         <>
@@ -58,14 +67,24 @@ export default function CartDrawer() {
           >
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-white/10">
-              <h2 className="text-xl font-bold text-white">
-                Cart{" "}
-                {totalItems > 0 && (
-                  <span className="text-lime text-sm font-normal">
-                    ({totalItems} {totalItems === 1 ? "item" : "items"})
-                  </span>
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-bold text-white">
+                  Cart{" "}
+                  {totalItems > 0 && (
+                    <span className="text-lime text-sm font-normal">
+                      ({totalItems} {totalItems === 1 ? "item" : "items"})
+                    </span>
+                  )}
+                </h2>
+                {items.length > 0 && (
+                  <button
+                    className="text-gray-600 hover:text-gray-400 text-xs transition-colors"
+                    onClick={clearCart}
+                  >
+                    Clear all
+                  </button>
                 )}
-              </h2>
+              </div>
               <motion.button
                 className="text-gray-400 hover:text-white p-2"
                 onClick={() => setIsOpen(false)}
@@ -107,14 +126,22 @@ export default function CartDrawer() {
                         transition={{ type: "spring", stiffness: 200, damping: 25 }}
                         className="flex gap-4"
                       >
-                        {/* Thumbnail */}
-                        <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0">
-                          <img
-                            src={item.image}
-                            alt={item.name}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
+                        {/* Thumbnail — color swatch for kits, image for legacy items */}
+                        {item.color ? (
+                          <KitSwatch color={item.color} />
+                        ) : item.image ? (
+                          <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0">
+                            <img
+                              src={item.image}
+                              alt={item.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-lime/20 flex items-center justify-center">
+                            <span className="text-lime text-2xl font-black">S</span>
+                          </div>
+                        )}
 
                         {/* Details */}
                         <div className="flex-1 min-w-0">
@@ -125,7 +152,7 @@ export default function CartDrawer() {
                             {item.subtitle}
                           </p>
                           <p className="text-lime font-bold mt-1">
-                            ${item.price}
+                            ${item.price.toFixed(2)}
                           </p>
 
                           {/* Quantity controls */}
@@ -148,7 +175,7 @@ export default function CartDrawer() {
                               +
                             </motion.button>
                             <motion.button
-                              className="ml-auto text-gray-600 hover:text-red-400 transition-colors"
+                              className="ml-auto p-2 -m-1 text-gray-600 hover:text-red-400 transition-colors rounded-lg hover:bg-white/5"
                               onClick={() => removeItem(item.id)}
                               whileTap={{ scale: 0.85 }}
                               aria-label={`Remove ${item.name}`}
@@ -162,15 +189,6 @@ export default function CartDrawer() {
                       </motion.div>
                     ))}
                   </AnimatePresence>
-
-                  {/* Clear cart */}
-                  <motion.button
-                    className="text-gray-600 hover:text-gray-400 text-xs transition-colors"
-                    onClick={clearCart}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    Clear cart
-                  </motion.button>
                 </div>
               )}
             </div>
@@ -192,24 +210,12 @@ export default function CartDrawer() {
                   Shipping & taxes calculated at checkout
                 </p>
                 <motion.button
-                  className="w-full bg-lime text-black py-4 rounded-full font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-lime text-black py-4 rounded-full font-bold text-lg"
                   onClick={handleCheckout}
-                  disabled={loading}
-                  whileHover={loading ? {} : { scale: 1.02, boxShadow: "0 0 30px rgba(163, 230, 53, 0.3)" }}
-                  whileTap={loading ? {} : { scale: 0.98 }}
+                  whileHover={{ scale: 1.02, boxShadow: "0 0 30px rgba(163, 230, 53, 0.3)" }}
+                  whileTap={{ scale: 0.98 }}
                 >
-                  {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <motion.span
-                        className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full inline-block"
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                      />
-                      Processing...
-                    </span>
-                  ) : (
-                    "Checkout"
-                  )}
+                  Checkout
                 </motion.button>
               </motion.div>
             )}
@@ -217,5 +223,12 @@ export default function CartDrawer() {
         </>
       )}
     </AnimatePresence>
+
+      {/* Embedded Checkout Modal */}
+      <CheckoutModal
+        isOpen={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+      />
+    </>
   );
 }
