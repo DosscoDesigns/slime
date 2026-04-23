@@ -145,37 +145,17 @@ export default function CartDrawer() {
 
                         {/* Details */}
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-white font-medium text-sm truncate">
-                            {item.name}
-                          </h3>
-                          <p className="text-gray-500 text-xs mt-0.5">
-                            {item.subtitle}
-                          </p>
-                          <p className="text-lime font-bold mt-1">
-                            ${item.price.toFixed(2)}
-                          </p>
-
-                          {/* Quantity controls */}
-                          <div className="flex items-center gap-3 mt-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h3 className="text-white font-medium text-sm truncate">
+                                {item.name}
+                              </h3>
+                              <p className="text-gray-500 text-xs mt-0.5">
+                                {item.subtitle}
+                              </p>
+                            </div>
                             <motion.button
-                              className="w-7 h-7 rounded-full border border-white/20 flex items-center justify-center text-gray-400 hover:text-white hover:border-white/40 text-sm"
-                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                              whileTap={{ scale: 0.85 }}
-                            >
-                              &minus;
-                            </motion.button>
-                            <span className="text-white text-sm font-medium w-4 text-center">
-                              {item.quantity}
-                            </span>
-                            <motion.button
-                              className="w-7 h-7 rounded-full border border-white/20 flex items-center justify-center text-gray-400 hover:text-white hover:border-white/40 text-sm"
-                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                              whileTap={{ scale: 0.85 }}
-                            >
-                              +
-                            </motion.button>
-                            <motion.button
-                              className="ml-auto p-2 -m-1 text-gray-600 hover:text-red-400 transition-colors rounded-lg hover:bg-white/5"
+                              className="p-2 -m-1 text-gray-600 hover:text-red-400 transition-colors rounded-lg hover:bg-white/5 shrink-0"
                               onClick={() => removeItem(item.id)}
                               whileTap={{ scale: 0.85 }}
                               aria-label={`Remove ${item.name}`}
@@ -184,6 +164,48 @@ export default function CartDrawer() {
                                 <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
                               </svg>
                             </motion.button>
+                          </div>
+
+                          {/* Kit breakdown */}
+                          {item.addons && item.addons.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {item.addons.map((addon) => (
+                                <div
+                                  key={addon.id}
+                                  className="flex justify-between text-xs text-gray-500"
+                                >
+                                  <span>{addon.name} &times;{addon.quantity}</span>
+                                  <span>${(addon.price * addon.quantity).toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between mt-2">
+                            <p className="text-lime font-bold">
+                              ${item.price.toFixed(2)}
+                            </p>
+
+                            {/* Quantity controls */}
+                            <div className="flex items-center gap-2">
+                              <motion.button
+                                className="w-7 h-7 rounded-full border border-white/20 flex items-center justify-center text-gray-400 hover:text-white hover:border-white/40 text-sm"
+                                onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                                whileTap={{ scale: 0.85 }}
+                              >
+                                &minus;
+                              </motion.button>
+                              <span className="text-white text-sm font-medium w-4 text-center">
+                                {item.quantity}
+                              </span>
+                              <motion.button
+                                className="w-7 h-7 rounded-full border border-white/20 flex items-center justify-center text-gray-400 hover:text-white hover:border-white/40 text-sm"
+                                onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                                whileTap={{ scale: 0.85 }}
+                              >
+                                +
+                              </motion.button>
+                            </div>
                           </div>
                         </div>
                       </motion.div>
