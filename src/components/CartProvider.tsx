@@ -29,6 +29,8 @@ interface CartContextType {
   addItem: (item: Omit<CartItem, "quantity">) => void;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
+  updateAddonQuantity: (itemId: string, addonId: string, quantity: number) => void;
+  removeAddon: (itemId: string, addonId: string) => void;
   clearCart: () => void;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
@@ -94,6 +96,37 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const updateAddonQuantity = useCallback((itemId: string, addonId: string, quantity: number) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId || !item.addons) return item;
+        const newAddons = quantity <= 0
+          ? item.addons.filter((a) => a.id !== addonId)
+          : item.addons.map((a) => (a.id === addonId ? { ...a, quantity } : a));
+        const addonTotal = newAddons.reduce((s, a) => s + a.price * a.quantity, 0);
+        const addonTotalCents = newAddons.reduce((s, a) => s + a.priceCents * a.quantity, 0);
+        // Base price = original price minus old addon total
+        const oldAddonTotal = item.addons.reduce((s, a) => s + a.price * a.quantity, 0);
+        const oldAddonTotalCents = item.addons.reduce((s, a) => s + a.priceCents * a.quantity, 0);
+        const basePrice = item.price - oldAddonTotal;
+        const basePriceCents = item.priceCents - oldAddonTotalCents;
+        return {
+          ...item,
+          addons: newAddons,
+          price: basePrice + addonTotal,
+          priceCents: basePriceCents + addonTotalCents,
+          subtitle: newAddons.length > 0
+            ? `${item.subtitle.split(" +")[0]} + ${newAddons.length} add-on${newAddons.length > 1 ? "s" : ""}`
+            : item.subtitle.split(" +")[0],
+        };
+      })
+    );
+  }, []);
+
+  const removeAddon = useCallback((itemId: string, addonId: string) => {
+    updateAddonQuantity(itemId, addonId, 0);
+  }, [updateAddonQuantity]);
+
   const clearCart = useCallback(() => {
     setItems([]);
   }, []);
@@ -108,6 +141,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         addItem,
         removeItem,
         updateQuantity,
+        updateAddonQuantity,
+        removeAddon,
         clearCart,
         isOpen,
         setIsOpen,
