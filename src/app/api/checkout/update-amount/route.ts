@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import {
   priceCart,
   computeShippingCents,
+  computeTaxCents,
   type CartLineInput,
 } from "@/lib/pricing";
 
@@ -15,17 +16,32 @@ function getStripe() {
   });
 }
 
+interface UpdateBody {
+  paymentIntentId: string;
+  items: CartLineInput[];
+  state?: string;
+  country?: string;
+}
+
+// Recompute the order total when the customer's shipping address changes in
+// the AddressElement. FL ship-to gets 7.5% sales tax; everywhere else is
+// tax-free (single-state nexus). The PaymentIntent amount is updated so the
+// charge reflects the correct total before confirmation. Mirrors rkpm.
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const { paymentIntentId, items, country, state } =
+      (await request.json()) as UpdateBody;
 
-    const cartItems: CartLineInput[] = body.items
-      ? body.items
-      : [{ id: body.productId, quantity: body.quantity || 1 }];
+    if (!paymentIntentId) {
+      return NextResponse.json(
+        { error: "paymentIntentId required" },
+        { status: 400 }
+      );
+    }
 
     let priced;
     try {
-      priced = priceCart(cartItems);
+      priced = priceCart(items);
     } catch (err) {
       return NextResponse.json(
         { error: err instanceof Error ? err.message : "Invalid cart" },
@@ -33,31 +49,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // No ship-to address yet at intent creation: shipping is based on
-    // subtotal (it doesn't depend on destination), tax is 0 until the
-    // customer enters a FL address (recomputed in /update-amount).
     const shippingCents = computeShippingCents(priced.subtotalCents);
-    const taxCents = 0;
+    const taxCents = computeTaxCents(priced.subtotalCents, country, state);
     const totalCents = priced.subtotalCents + shippingCents + taxCents;
 
     const stripe = getStripe();
-    const paymentIntent = await stripe.paymentIntents.create({
+    await stripe.paymentIntents.update(paymentIntentId, {
       amount: totalCents,
-      currency: "usd",
-      description: priced.description,
-      automatic_payment_methods: { enabled: true },
       metadata: {
         items: JSON.stringify(priced.lines),
         subtotal_cents: String(priced.subtotalCents),
         shipping_cents: String(shippingCents),
         tax_cents: String(taxCents),
+        ship_to_state: state ?? "",
+        ship_to_country: country ?? "",
         notification_email: process.env.ORDER_NOTIFICATION_EMAIL ?? "",
       },
     });
 
     return NextResponse.json({
-      clientSecret: paymentIntent.client_secret,
-      paymentIntentId: paymentIntent.id,
       subtotalCents: priced.subtotalCents,
       shippingCents,
       taxCents,
@@ -65,9 +75,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("Stripe checkout error:", message);
+    console.error("update-amount error:", message);
     return NextResponse.json(
-      { error: `Checkout failed: ${message}` },
+      { error: `Could not update amount: ${message}` },
       { status: 500 }
     );
   }

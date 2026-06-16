@@ -3,10 +3,22 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useMemo, useCallback } from "react";
 import { useCart, KitAddon } from "./CartProvider";
+import {
+  ADDON_DEFS,
+  KIT_TIERS,
+  type AddonDef,
+  type KitTier,
+  type SlimeColor,
+} from "@/lib/products";
 
-// --- Data ---
+// Pricing data lives in @/lib/products (shared with the server so the
+// charged price is recomputed server-side, never trusted from the client).
+// Re-exported here for existing importers (Products.tsx).
+export { ADDON_DEFS, KIT_TIERS };
+export type { AddonDef, KitTier, SlimeColor };
 
-export type SlimeColor = "red" | "green" | "blue" | "yellow";
+// --- UI-only data ---
+
 type ColorOption = SlimeColor | "one-of-each";
 
 const COLORS: { id: ColorOption; label: string; hex: string }[] = [
@@ -15,103 +27,6 @@ const COLORS: { id: ColorOption; label: string; hex: string }[] = [
   { id: "blue", label: "Blue", hex: "#3b82f6" },
   { id: "yellow", label: "Yellow", hex: "#eab308" },
   { id: "one-of-each", label: "One of Each", hex: "" },
-];
-
-interface AddonDef {
-  id: string;
-  name: string;
-  description: string;
-  retailPrice: number; // "regular" price
-  retailPriceCents: number;
-  kitPrice: number; // discounted kit price
-  kitPriceCents: number;
-  icon: string;
-  suggestedPer20: number;
-}
-
-const ADDON_DEFS: AddonDef[] = [
-  {
-    id: "buckets",
-    name: "5-Gallon Buckets",
-    description: "Mix your slime right in the bucket",
-    retailPrice: 8,
-    retailPriceCents: 800,
-    kitPrice: 4,
-    kitPriceCents: 400,
-    icon: "🪣",
-    suggestedPer20: 4,
-  },
-  {
-    id: "sprayers",
-    name: "Pump Sprayers",
-    description: "Maximum slime coverage",
-    retailPrice: 5,
-    retailPriceCents: 500,
-    kitPrice: 3,
-    kitPriceCents: 300,
-    icon: "🔫",
-    suggestedPer20: 12,
-  },
-  {
-    id: "mixer",
-    name: "Mixing Paddle",
-    description: "Attach to any drill for easy mixing",
-    retailPrice: 12,
-    retailPriceCents: 1200,
-    kitPrice: 8,
-    kitPriceCents: 800,
-    icon: "🔧",
-    suggestedPer20: 1,
-  },
-  {
-    id: "goggles",
-    name: "Safety Goggles",
-    description: "Keep the slime out of your eyes",
-    retailPrice: 4,
-    retailPriceCents: 400,
-    kitPrice: 2,
-    kitPriceCents: 200,
-    icon: "🥽",
-    suggestedPer20: 10,
-  },
-];
-
-export interface KitTier {
-  gallons: number;
-  name: string;
-  tagline: string;
-  basePrice: number;
-  basePriceCents: number;
-  color: "lime" | "purple" | "pink";
-  popular?: boolean;
-}
-
-export const KIT_TIERS: KitTier[] = [
-  {
-    gallons: 20,
-    name: "Backyard Bash",
-    tagline: "Perfect for 10–25 people",
-    basePrice: 15,
-    basePriceCents: 1500,
-    color: "lime",
-  },
-  {
-    gallons: 40,
-    name: "Block Party",
-    tagline: "Great for 25–50 people",
-    basePrice: 28,
-    basePriceCents: 2800,
-    color: "purple",
-    popular: true,
-  },
-  {
-    gallons: 80,
-    name: "Total Mayhem",
-    tagline: "Built for 50–100+ people",
-    basePrice: 50,
-    basePriceCents: 5000,
-    color: "pink",
-  },
 ];
 
 // --- Helpers ---

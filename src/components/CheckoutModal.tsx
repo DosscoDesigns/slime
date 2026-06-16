@@ -7,6 +7,7 @@ import {
   Elements,
   PaymentElement,
   AddressElement,
+  LinkAuthenticationElement,
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
@@ -45,12 +46,73 @@ const appearance: StripeElementsOptions["appearance"] = {
   },
 };
 
-function CheckoutForm({ onClose, total }: { onClose: () => void; total: number }) {
+interface Breakdown {
+  subtotalCents: number;
+  shippingCents: number;
+  taxCents: number;
+  totalCents: number;
+}
+
+function cartPayload(items: CartItem[]) {
+  return items.map((i) => ({
+    id: i.id,
+    quantity: i.quantity,
+    name: i.name,
+    subtitle: i.subtitle,
+    priceCents: i.priceCents,
+    gallons: i.gallons,
+    color: i.color,
+    addons: i.addons,
+  }));
+}
+
+function CheckoutForm({
+  onClose,
+  paymentIntentId,
+  breakdown,
+  setBreakdown,
+}: {
+  onClose: () => void;
+  paymentIntentId: string | null;
+  breakdown: Breakdown;
+  setBreakdown: (b: Breakdown) => void;
+}) {
   const stripe = useStripe();
   const elements = useElements();
+  const { items, clearCart } = useCart();
   const [loading, setLoading] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { clearCart } = useCart();
+
+  const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+  // Recompute shipping + FL tax whenever the customer completes/edits their
+  // shipping address. The server updates the PaymentIntent amount and returns
+  // the fresh breakdown.
+  const syncAmount = useCallback(
+    async (country?: string, state?: string) => {
+      if (!paymentIntentId) return;
+      setUpdating(true);
+      try {
+        const res = await fetch("/api/checkout/update-amount", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentIntentId,
+            items: cartPayload(items),
+            country,
+            state,
+          }),
+        });
+        if (res.ok) setBreakdown((await res.json()) as Breakdown);
+      } catch {
+        // keep last known totals
+      } finally {
+        setUpdating(false);
+      }
+    },
+    [paymentIntentId, items, setBreakdown]
+  );
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -65,8 +127,22 @@ function CheckoutForm({ onClose, total }: { onClose: () => void; total: number }
       return;
     }
 
+    // Final amount sync from the entered address so the charged total matches
+    // the displayed total (covers the case where the address changed but the
+    // onChange update hadn't completed).
+    const addressEl = elements.getElement(AddressElement);
+    if (addressEl) {
+      const { complete, value } = await addressEl.getValue();
+      if (complete) {
+        await syncAmount(value.address.country, value.address.state);
+      }
+    }
+
     const { error: confirmError } = await stripe.confirmPayment({
       elements,
+      // No receipt_email — the LinkAuthentication element attaches the email
+      // to billing_details, and our Mailgun webhook is the sole sender (this
+      // avoids a duplicate Stripe auto-receipt).
       confirmParams: { return_url: `${window.location.origin}/success` },
     });
 
@@ -75,20 +151,35 @@ function CheckoutForm({ onClose, total }: { onClose: () => void; total: number }
       setLoading(false);
     } else {
       clearCart();
-      try { localStorage.removeItem("slimeco-cart"); } catch {}
+      try {
+        localStorage.removeItem("slimeco-cart");
+      } catch {}
     }
   }
+
+  const total = breakdown.totalCents || breakdown.subtotalCents;
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto p-5 space-y-6">
         <div>
-          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Payment</h3>
-          <PaymentElement options={{ layout: "tabs" }} />
+          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Contact</h3>
+          <LinkAuthenticationElement />
         </div>
         <div>
           <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Shipping Address</h3>
-          <AddressElement options={{ mode: "shipping", allowedCountries: ["US"] }} />
+          <AddressElement
+            options={{ mode: "shipping", allowedCountries: ["US"] }}
+            onChange={(e) => {
+              if (e.complete) {
+                syncAmount(e.value.address.country, e.value.address.state);
+              }
+            }}
+          />
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Payment</h3>
+          <PaymentElement options={{ layout: "tabs" }} />
         </div>
         {error && (
           <motion.p
@@ -100,15 +191,37 @@ function CheckoutForm({ onClose, total }: { onClose: () => void; total: number }
           </motion.p>
         )}
       </div>
-      <div className="border-t border-white/10 p-5 space-y-3 shrink-0">
-        <div className="flex justify-between items-center">
+      <div className="border-t border-white/10 p-5 space-y-2 shrink-0">
+        <div className="flex justify-between text-sm text-gray-400">
+          <span>Subtotal</span>
+          <span>{money(breakdown.subtotalCents)}</span>
+        </div>
+        <div className="flex justify-between text-sm text-gray-400">
+          <span>Shipping</span>
+          {breakdown.shippingCents === 0 ? (
+            <span className="text-lime font-semibold">Free</span>
+          ) : (
+            <span>{money(breakdown.shippingCents)}</span>
+          )}
+        </div>
+        {(breakdown.taxCents > 0 || updating) && (
+          <div className="flex justify-between text-sm text-gray-400">
+            <span>FL sales tax (7.5%)</span>
+            {updating ? (
+              <span className="italic opacity-60">updating…</span>
+            ) : (
+              <span>{money(breakdown.taxCents)}</span>
+            )}
+          </div>
+        )}
+        <div className="flex justify-between items-center pt-2 border-t border-white/10">
           <span className="text-gray-400 text-sm">Total</span>
-          <span className="text-white text-xl font-bold">${total.toFixed(2)}</span>
+          <span className="text-white text-xl font-bold">{money(total)}</span>
         </div>
         <motion.button
           type="submit"
-          disabled={!stripe || loading}
-          className="w-full bg-lime text-black py-3.5 rounded-full font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!stripe || loading || updating}
+          className="w-full bg-lime text-black py-3.5 rounded-full font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed mt-1"
           whileHover={loading ? {} : { scale: 1.02, boxShadow: "0 0 30px rgba(163, 230, 53, 0.3)" }}
           whileTap={loading ? {} : { scale: 0.98 }}
         >
@@ -122,7 +235,7 @@ function CheckoutForm({ onClose, total }: { onClose: () => void; total: number }
               Processing...
             </span>
           ) : (
-            `Pay $${total.toFixed(2)}`
+            `Pay ${money(total)}`
           )}
         </motion.button>
         <button type="button" onClick={onClose} className="w-full text-center text-xs text-gray-600 hover:text-gray-400 transition-colors">
@@ -134,8 +247,15 @@ function CheckoutForm({ onClose, total }: { onClose: () => void; total: number }
 }
 
 function CheckoutModalContent({ onClose }: { onClose: () => void }) {
-  const { items, totalPrice } = useCart();
+  const { items } = useCart();
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [breakdown, setBreakdown] = useState<Breakdown>({
+    subtotalCents: 0,
+    shippingCents: 0,
+    taxCents: 0,
+    totalCents: 0,
+  });
   const [fetchError, setFetchError] = useState<string | null>(null);
   const fetchedRef = useRef<boolean | null>(null);
 
@@ -144,17 +264,18 @@ function CheckoutModalContent({ onClose }: { onClose: () => void }) {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i: CartItem) => ({
-            id: i.id, quantity: i.quantity, name: i.name,
-            subtitle: i.subtitle, priceCents: i.priceCents,
-            gallons: i.gallons, color: i.color, addons: i.addons,
-          })),
-        }),
+        body: JSON.stringify({ items: cartPayload(items) }),
       });
       const data = await res.json();
       if (data.clientSecret) {
         setClientSecret(data.clientSecret);
+        setPaymentIntentId(data.paymentIntentId ?? null);
+        setBreakdown({
+          subtotalCents: data.subtotalCents ?? 0,
+          shippingCents: data.shippingCents ?? 0,
+          taxCents: data.taxCents ?? 0,
+          totalCents: data.totalCents ?? 0,
+        });
       } else {
         setFetchError(data.error || "Failed to initialize checkout.");
       }
@@ -213,7 +334,12 @@ function CheckoutModalContent({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <Elements stripe={stripePromise} options={{ clientSecret, appearance }}>
-            <CheckoutForm onClose={onClose} total={totalPrice} />
+            <CheckoutForm
+              onClose={onClose}
+              paymentIntentId={paymentIntentId}
+              breakdown={breakdown}
+              setBreakdown={setBreakdown}
+            />
           </Elements>
         )}
       </motion.div>
