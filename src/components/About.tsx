@@ -53,7 +53,7 @@ export default function About() {
                 One pouch of our proprietary powder plus water gives you 5
                 gallons of thick, pourable, sprayable slime.
               </span>{" "}
-              Load up a pump sprayer. Fill a bucket and send it. It&apos;s
+              Fill a bucket and send it. It&apos;s
               safe, it washes out, and it&apos;s the most fun your group
               will have all year.
             </p>

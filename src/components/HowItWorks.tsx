@@ -15,7 +15,7 @@ const steps = [
     number: "02",
     title: "Add Water & Mix",
     description:
-      "Fill the bucket with water and stir with a mixing paddle or your hands. Watch it transform in seconds.",
+      "Fill the bucket with water and stir with a mixing paddle or your hands. Wait 3-5 minutes for slime to thicken.",
     icon: "💧",
   },
   {
