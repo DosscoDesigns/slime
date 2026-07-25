@@ -6,7 +6,7 @@
 **Project:** The Slime Co — slime powder kit e-commerce site
 **Business:** Partnership between Jason Doss and Trav Eslinger. Slime powder kits sold via Shopify and Amazon. This site is the marketing/direct-sales channel.
 **GitHub Org:** DosscoDesigns
-**Linear:** Dossco Designs workspace (team DOS, use `mcp__linear-dd__*` tools)
+**Task Tracking:** GitHub Issues on `DosscoDesigns/slime` (`gh` CLI or `mcp__github__*` tools) — Linear not used for DD
 **Documentation:** `BRAIN/20-DD/2010-Projects/The-Slime-Co/`
 
 ## CRITICAL: Recipe is Proprietary
