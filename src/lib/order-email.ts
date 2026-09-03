@@ -65,6 +65,8 @@ const INK = "#0a0a0a";
 export function renderOrderEmail({ pi, charge }: RenderArgs): RenderedEmail {
   const lines = parseLines(pi.metadata);
   const subtotal = Number(pi.metadata.subtotal_cents || 0);
+  const discount = Number(pi.metadata.discount_cents || 0);
+  const couponCode = pi.metadata.coupon_code || "";
   const shipping = Number(pi.metadata.shipping_cents || 0);
   const tax = Number(pi.metadata.tax_cents || 0);
   const total = pi.amount;
@@ -96,6 +98,9 @@ export function renderOrderEmail({ pi, charge }: RenderArgs): RenderedEmail {
   }
   t.push("");
   t.push(`  Subtotal:  ${money(subtotal)}`);
+  if (discount > 0) {
+    t.push(`  Discount${couponCode ? ` (${couponCode})` : ""}: -${money(discount)}`);
+  }
   t.push(`  Shipping:  ${shipping === 0 ? "Free" : money(shipping)}`);
   if (tax > 0) t.push(`  FL sales tax (7.5%): ${money(tax)}`);
   t.push(`  Total:     ${money(total)}`);
@@ -173,6 +178,14 @@ export function renderOrderEmail({ pi, charge }: RenderArgs): RenderedEmail {
               <td style="padding:12px 0 4px 0;font-family:${SANS};color:#555;font-size:14px;">Subtotal</td>
               <td style="padding:12px 0 4px 0;font-family:${SANS};color:#555;font-size:14px;text-align:right;">${money(subtotal)}</td>
             </tr>
+            ${
+              discount > 0
+                ? `<tr>
+              <td style="padding:4px 0;font-family:${SANS};color:#166534;font-size:14px;">Discount${couponCode ? ` (${escapeHtml(couponCode)})` : ""}</td>
+              <td style="padding:4px 0;font-family:${SANS};color:#166534;font-size:14px;text-align:right;">-${money(discount)}</td>
+            </tr>`
+                : ""
+            }
             <tr>
               <td style="padding:4px 0;font-family:${SANS};color:#555;font-size:14px;">Shipping</td>
               <td style="padding:4px 0;font-family:${SANS};color:#555;font-size:14px;text-align:right;">${shipping === 0 ? "Free" : money(shipping)}</td>

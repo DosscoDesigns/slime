@@ -48,6 +48,10 @@ const appearance: StripeElementsOptions["appearance"] = {
 
 interface Breakdown {
   subtotalCents: number;
+  discountCents: number;
+  couponCode: string | null;
+  couponLabel: string | null;
+  couponError: string | null;
   shippingCents: number;
   taxCents: number;
   totalCents: number;
@@ -83,6 +87,15 @@ function CheckoutForm({
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What the customer typed, and what the SERVER confirmed. The applied code
+  // is kept separately so it can be replayed on every amount re-sync (an
+  // address edit must not silently drop the discount).
+  const [codeInput, setCodeInput] = useState("");
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+  // Last known ship-to, replayed when only the coupon changes.
+  const addressRef = useRef<{ country?: string; state?: string }>({});
 
   const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -90,8 +103,14 @@ function CheckoutForm({
   // shipping address. The server updates the PaymentIntent amount and returns
   // the fresh breakdown.
   const syncAmount = useCallback(
-    async (country?: string, state?: string) => {
-      if (!paymentIntentId) return;
+    async (
+      country?: string,
+      state?: string,
+      couponOverride?: string | null
+    ): Promise<Breakdown | null> => {
+      if (!paymentIntentId) return null;
+      const coupon =
+        couponOverride === undefined ? appliedCode : couponOverride;
       setUpdating(true);
       try {
         const res = await fetch("/api/checkout/update-amount", {
@@ -102,16 +121,49 @@ function CheckoutForm({
             items: cartPayload(items),
             country,
             state,
+            couponCode: coupon ?? "",
           }),
         });
-        if (res.ok) setBreakdown((await res.json()) as Breakdown);
+        if (res.ok) {
+          const b = (await res.json()) as Breakdown;
+          setBreakdown(b);
+          return b;
+        }
       } catch {
         // keep last known totals
       } finally {
         setUpdating(false);
       }
+      return null;
     },
-    [paymentIntentId, items, setBreakdown]
+    [paymentIntentId, items, setBreakdown, appliedCode]
+  );
+
+  // Apply / remove a code. The server decides whether it's valid and what
+  // it's worth; we only mirror what it reports back.
+  const applyCode = useCallback(
+    async (raw: string | null) => {
+      setApplying(true);
+      setCodeError(null);
+      const b = await syncAmount(
+        addressRef.current.country,
+        addressRef.current.state,
+        raw
+      );
+      if (b) {
+        if (b.couponCode) {
+          setAppliedCode(b.couponCode);
+          setCodeInput("");
+        } else {
+          setAppliedCode(null);
+          setCodeError(b.couponError ?? null);
+        }
+      } else {
+        setCodeError("Could not check that code. Try again.");
+      }
+      setApplying(false);
+    },
+    [syncAmount]
   );
 
   async function handleSubmit(e: FormEvent) {
@@ -172,6 +224,10 @@ function CheckoutForm({
             options={{ mode: "shipping", allowedCountries: ["US"] }}
             onChange={(e) => {
               if (e.complete) {
+                addressRef.current = {
+                  country: e.value.address.country,
+                  state: e.value.address.state,
+                };
                 syncAmount(e.value.address.country, e.value.address.state);
               }
             }}
@@ -192,10 +248,72 @@ function CheckoutForm({
         )}
       </div>
       <div className="border-t border-white/10 p-5 space-y-2 shrink-0">
+        {/* Promo code */}
+        {breakdown.couponCode ? (
+          <div className="flex items-center justify-between gap-2 pb-1">
+            <span className="inline-flex items-center gap-2 text-xs font-semibold text-lime bg-lime/10 border border-lime/30 rounded-full px-3 py-1">
+              {breakdown.couponCode}
+              {breakdown.couponLabel ? ` · ${breakdown.couponLabel}` : ""}
+            </span>
+            <button
+              type="button"
+              onClick={() => applyCode(null)}
+              disabled={applying || loading}
+              className="text-xs text-gray-500 hover:text-gray-300 underline disabled:opacity-50"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="pb-1">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={codeInput}
+                onChange={(e) => {
+                  setCodeInput(e.target.value);
+                  setCodeError(null);
+                }}
+                onKeyDown={(e) => {
+                  // Enter must not submit the payment form
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (codeInput.trim()) applyCode(codeInput);
+                  }
+                }}
+                placeholder="Promo code"
+                autoComplete="off"
+                spellCheck={false}
+                aria-label="Promo code"
+                className="flex-1 min-w-0 bg-zinc-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-lime uppercase"
+              />
+              <button
+                type="button"
+                onClick={() => applyCode(codeInput)}
+                disabled={!codeInput.trim() || applying || loading}
+                className="shrink-0 text-sm font-semibold text-black bg-lime rounded-xl px-4 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {applying ? "…" : "Apply"}
+              </button>
+            </div>
+            {codeError && (
+              <p className="text-red-400 text-xs mt-1.5">{codeError}</p>
+            )}
+          </div>
+        )}
         <div className="flex justify-between text-sm text-gray-400">
           <span>Subtotal</span>
           <span>{money(breakdown.subtotalCents)}</span>
         </div>
+        {breakdown.discountCents > 0 && (
+          <div className="flex justify-between text-sm text-lime">
+            <span>
+              Discount
+              {breakdown.couponCode ? ` (${breakdown.couponCode})` : ""}
+            </span>
+            <span>-{money(breakdown.discountCents)}</span>
+          </div>
+        )}
         <div className="flex justify-between text-sm text-gray-400">
           <span>Shipping</span>
           {breakdown.shippingCents === 0 ? (
@@ -252,6 +370,10 @@ function CheckoutModalContent({ onClose }: { onClose: () => void }) {
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [breakdown, setBreakdown] = useState<Breakdown>({
     subtotalCents: 0,
+    discountCents: 0,
+    couponCode: null,
+    couponLabel: null,
+    couponError: null,
     shippingCents: 0,
     taxCents: 0,
     totalCents: 0,
@@ -272,6 +394,10 @@ function CheckoutModalContent({ onClose }: { onClose: () => void }) {
         setPaymentIntentId(data.paymentIntentId ?? null);
         setBreakdown({
           subtotalCents: data.subtotalCents ?? 0,
+          discountCents: data.discountCents ?? 0,
+          couponCode: data.couponCode ?? null,
+          couponLabel: data.couponLabel ?? null,
+          couponError: null,
           shippingCents: data.shippingCents ?? 0,
           taxCents: data.taxCents ?? 0,
           totalCents: data.totalCents ?? 0,

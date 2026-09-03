@@ -10,6 +10,10 @@ const steps = [
     description:
       "Tear open a pouch and dump the powder into any standard 5-gallon bucket. One pouch = one bucket = 5 gallons of slime.",
     icon: "🪣",
+    photo: "bucket-carry",
+    photoW: 700,
+    photoH: 933,
+    photoAlt: "A kid carrying a full bucket of slime across the field, sprayer in the other hand",
   },
   {
     number: "02",
@@ -17,6 +21,10 @@ const steps = [
     description:
       "Fill the bucket with water and stir with a mixing paddle or your hands. Wait 3-5 minutes for slime to thicken.",
     icon: "💧",
+    photo: "pool-refill",
+    photoW: 620,
+    photoH: 465,
+    photoAlt: "Refilling sprayers from a pool of mixed slime",
   },
   {
     number: "03",
@@ -24,6 +32,10 @@ const steps = [
     description:
       "Fill up sprayers, grab buckets, and let chaos reign. Perfect for slime wars, obstacle courses, and content creation.",
     icon: "🎉",
+    photo: "crowd-wide",
+    photoW: 620,
+    photoH: 414,
+    photoAlt: "A whole field of people in the middle of a slime war",
   },
 ];
 
@@ -111,8 +123,25 @@ export default function HowItWorks() {
                   {step.icon}
                 </motion.div>
 
-                {/* Spacer for alignment */}
-                <div className="flex-1 hidden md:block" />
+                {/* Photo fills the opposite half — this used to be an empty
+                    spacer, which left every step visibly half-blank. */}
+                <div className="flex-1 w-full">
+                  <motion.div
+                    className="rounded-2xl overflow-hidden border border-white/10"
+                    whileHover={{ scale: 1.03 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                  >
+                    <img
+                      src={`/photos/${step.photo}-${step.photoW}.webp`}
+                      width={step.photoW}
+                      height={step.photoH}
+                      alt={step.photoAlt}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-auto block"
+                    />
+                  </motion.div>
+                </div>
               </motion.div>
             ))}
           </div>

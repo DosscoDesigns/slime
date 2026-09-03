@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import {
   priceCart,
-  computeShippingCents,
+  computeOrderTotals,
   type CartLineInput,
 } from "@/lib/pricing";
 
@@ -33,24 +33,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // No ship-to address yet at intent creation: shipping is based on
-    // subtotal (it doesn't depend on destination), tax is 0 until the
-    // customer enters a FL address (recomputed in /update-amount).
-    const shippingCents = computeShippingCents(priced.subtotalCents);
-    const taxCents = 0;
-    const totalCents = priced.subtotalCents + shippingCents + taxCents;
+    // No ship-to address yet at intent creation, so tax is 0 until the
+    // customer enters a FL address (recomputed in /update-amount). Shipping
+    // and any coupon discount don't depend on destination.
+    const totals = computeOrderTotals(priced, body.couponCode);
 
     const stripe = getStripe();
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: totalCents,
+      amount: totals.totalCents,
       currency: "usd",
       description: priced.description,
       automatic_payment_methods: { enabled: true },
       metadata: {
         items: JSON.stringify(priced.lines),
-        subtotal_cents: String(priced.subtotalCents),
-        shipping_cents: String(shippingCents),
-        tax_cents: String(taxCents),
+        subtotal_cents: String(totals.subtotalCents),
+        discount_cents: String(totals.discountCents),
+        coupon_code: totals.couponCode ?? "",
+        shipping_cents: String(totals.shippingCents),
+        tax_cents: String(totals.taxCents),
         notification_email: process.env.ORDER_NOTIFICATION_EMAIL ?? "",
       },
     });
@@ -58,10 +58,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
-      subtotalCents: priced.subtotalCents,
-      shippingCents,
-      taxCents,
-      totalCents,
+      ...totals,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

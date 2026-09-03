@@ -9,6 +9,22 @@ export default function CTA() {
 
   return (
     <section className="py-32 px-6 relative overflow-hidden" ref={ref}>
+      {/* Photo backdrop, held well back so it reads as texture behind the
+          headline rather than competing with it. */}
+      <div className="absolute inset-0">
+        <img
+          src="/photos/cta-crowd-900.webp"
+          srcSet="/photos/cta-crowd-900.webp 900w, /photos/cta-crowd-1600.webp 1600w"
+          sizes="100vw"
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          decoding="async"
+          className="w-full h-full object-cover opacity-25"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a] via-[#0a0a0a]/60 to-[#0a0a0a]" />
+      </div>
+
       {/* Background effects */}
       <motion.div
         className="absolute inset-0 bg-gradient-to-r from-lime/10 via-purple/10 to-pink/10"
@@ -68,7 +84,7 @@ export default function CTA() {
           </motion.a>
 
           <p className="text-gray-600 text-sm mt-6">
-            Free shipping on orders over $50
+            Free shipping on orders of $100 or more
           </p>
         </motion.div>
       </div>

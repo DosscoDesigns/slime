@@ -1,6 +1,20 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useSyncExternalStore, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, useSyncExternalStore, ReactNode } from "react";
+import { ADDONS_BY_ID, addonLineCents } from "@/lib/products";
+
+/**
+ * Sum add-on lines through the shared pricer so any quantity break is honoured
+ * here exactly as the server honours it. Summing `priceCents * quantity`
+ * instead would show a bulk-priced line at its undiscounted total while the
+ * server charged the bundle price.
+ */
+function sumAddonCents(addons: KitAddon[]): number {
+  return addons.reduce((s, a) => {
+    const def = ADDONS_BY_ID[a.id];
+    return s + (def ? addonLineCents(def, a.quantity) : a.priceCents * a.quantity);
+  }, 0);
+}
 
 export interface KitAddon {
   id: string;
@@ -44,11 +58,41 @@ const CART_STORAGE_KEY = "slimeco-cart";
 // Custom event to notify subscribers of cart changes
 const CART_CHANGE_EVENT = "slimeco-cart-change";
 
+/**
+ * Drop add-ons that no longer exist from a persisted cart, repricing the kit.
+ *
+ * Carts live in localStorage indefinitely, so a returning customer can be
+ * holding an add-on we have since retired (buckets, dropped because they
+ * cannot be shipped economically). priceKitCents() THROWS on an unknown
+ * add-on, which would 400 their checkout and strand them with a cart they
+ * cannot buy. Pruning on read is silent and safe: the line disappears and the
+ * kit price drops accordingly.
+ */
+function pruneRetiredAddons(items: CartItem[]): CartItem[] {
+  return items.map((item) => {
+    if (!item.addons?.length) return item;
+    const kept = item.addons.filter((a) => ADDONS_BY_ID[a.id]);
+    if (kept.length === item.addons.length) return item;
+    const basePriceCents = item.priceCents - sumAddonCents(item.addons);
+    const newPriceCents = basePriceCents + sumAddonCents(kept);
+    return {
+      ...item,
+      addons: kept,
+      price: newPriceCents / 100,
+      priceCents: newPriceCents,
+      subtitle:
+        kept.length > 0
+          ? `${item.subtitle.split(" +")[0]} + ${kept.length} add-on${kept.length > 1 ? "s" : ""}`
+          : item.subtitle.split(" +")[0],
+    };
+  });
+}
+
 function readCart(): CartItem[] {
   if (typeof window === "undefined") return [];
   try {
     const stored = localStorage.getItem(CART_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
+    return stored ? pruneRetiredAddons(JSON.parse(stored)) : [];
   } catch {
     return [];
   }
@@ -92,7 +136,13 @@ function subscribe(callback: () => void): () => void {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const cartJson = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const items: CartItem[] = JSON.parse(cartJson);
+  // Prune here too, not just in readCart(): the rendered items come straight
+  // from the localStorage snapshot, so a retired add-on would otherwise still
+  // be displayed and still be posted to /api/checkout.
+  const items: CartItem[] = useMemo(
+    () => pruneRetiredAddons(JSON.parse(cartJson)),
+    [cartJson]
+  );
 
   const [isOpen, setIsOpen] = useState(false);
 
@@ -127,17 +177,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const newAddons = quantity <= 0
           ? item.addons.filter((a) => a.id !== addonId)
           : item.addons.map((a) => (a.id === addonId ? { ...a, quantity } : a));
-        const oldAddonTotal = item.addons.reduce((s, a) => s + a.price * a.quantity, 0);
-        const oldAddonTotalCents = item.addons.reduce((s, a) => s + a.priceCents * a.quantity, 0);
-        const basePrice = item.price - oldAddonTotal;
+        const oldAddonTotalCents = sumAddonCents(item.addons);
         const basePriceCents = item.priceCents - oldAddonTotalCents;
-        const addonTotal = newAddons.reduce((s, a) => s + a.price * a.quantity, 0);
-        const addonTotalCents = newAddons.reduce((s, a) => s + a.priceCents * a.quantity, 0);
+        const addonTotalCents = sumAddonCents(newAddons);
+        const newPriceCents = basePriceCents + addonTotalCents;
         return {
           ...item,
           addons: newAddons,
-          price: basePrice + addonTotal,
-          priceCents: basePriceCents + addonTotalCents,
+          price: newPriceCents / 100,
+          priceCents: newPriceCents,
           subtitle: newAddons.length > 0
             ? `${item.subtitle.split(" +")[0]} + ${newAddons.length} add-on${newAddons.length > 1 ? "s" : ""}`
             : item.subtitle.split(" +")[0],

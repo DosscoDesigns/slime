@@ -13,14 +13,41 @@ export default function Hero() {
   const y = useTransform(scrollYProgress, [0, 1], [0, 200]);
   const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
   const scale = useTransform(scrollYProgress, [0, 0.5], [1, 0.9]);
+  // Backdrop moves less than the copy (classic parallax) and eases in
+  // slightly so the edges never expose the page background.
+  const bgY = useTransform(scrollYProgress, [0, 1], [0, 80]);
+  const bgScale = useTransform(scrollYProgress, [0, 1], [1.08, 1.16]);
 
   return (
     <section
       ref={ref}
       className="relative min-h-screen flex items-center justify-center overflow-hidden"
     >
+      {/* Launch-night photo backdrop. Drifts slightly slower than the copy
+          for depth. Overlaid twice — a flat scrim for contrast, then a
+          bottom-up gradient so the headline never sits on busy grass. */}
+      <motion.div className="absolute inset-0" style={{ y: bgY, scale: bgScale }}>
+        <img
+          src="/photos/hero-field-1600.webp"
+          srcSet="/photos/hero-field-900.webp 900w, /photos/hero-field-1600.webp 1600w, /photos/hero-field-2400.webp 2400w"
+          sizes="100vw"
+          alt="A field full of people in the middle of a slime war"
+          className="w-full h-full object-cover"
+          fetchPriority="high"
+          decoding="async"
+        />
+      </motion.div>
+      {/* One flat scrim for text contrast, plus a bottom-only fade that
+          hands off into the next section. Keep these light — stacking a
+          full-strength gradient on top of the scrim blacks the photo out. */}
+      <div className="absolute inset-0 bg-black/45" />
+      {/* Centre vignette: buys contrast under the copy block without
+          flattening the whole photo the way a heavier flat scrim would. */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.55)_0%,transparent_65%)]" />
+      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[#0a0a0a] to-transparent" />
+
       {/* Animated background blobs */}
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 opacity-60">
         <motion.div
           className="absolute top-1/4 left-1/4 w-96 h-96 bg-lime/20 rounded-full blur-3xl"
           animate={{
@@ -103,7 +130,7 @@ export default function Hero() {
 
         {/* Subheadline */}
         <motion.p
-          className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10"
+          className="text-lg sm:text-xl text-gray-200 max-w-2xl mx-auto mb-10 [text-shadow:0_1px_12px_rgba(0,0,0,0.9)]"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, type: "spring" }}
@@ -168,7 +195,7 @@ export default function Hero() {
               <div className="text-2xl sm:text-3xl font-black text-lime">
                 {stat.value}
               </div>
-              <div className="text-xs sm:text-sm text-gray-500 mt-1">
+              <div className="text-xs sm:text-sm text-gray-300 mt-1">
                 {stat.label}
               </div>
             </motion.div>

@@ -30,6 +30,10 @@ function PolicyModal({
             available at checkout.
           </p>
           <p>
+            Shipping is a flat $5.99 per order, and it&apos;s free on orders of
+            $100 or more. Sales tax is added for Florida addresses.
+          </p>
+          <p>
             You&apos;ll receive a tracking number via email once your order
             ships. If you don&apos;t see it, check your spam folder or reach
             out to us.

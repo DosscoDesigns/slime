@@ -3,12 +3,21 @@
 // address change). Mirrors rkpm's flat-rate, ship-to-driven approach.
 
 import { priceKitCents, kitLineName } from "./products";
+import { applyCoupon } from "./coupons";
 
 /** Flat shipping fee (cents) applied to orders below the free threshold. */
 export const SHIPPING_FLAT_CENTS = 599;
 
-/** Order subtotal (cents) at/above which shipping is free. */
-export const SHIPPING_FREE_THRESHOLD_CENTS = 5000;
+/**
+ * Order subtotal (cents) at/above which shipping is free.
+ *
+ * Set at $100 deliberately. At the old $50 the threshold sat exactly on the
+ * 80-gallon kit's base price, so every Total Mayhem order shipped free on its
+ * own and a 40-gallon kit got there with almost any add-on — which meant the
+ * flat fee only ever applied to a bare 20-gallon kit. $100 makes add-on
+ * orders actually carry shipping.
+ */
+export const SHIPPING_FREE_THRESHOLD_CENTS = 10000;
 
 /**
  * Florida sales tax rate. Dossco Designs / The Slime Co has nexus in FL
@@ -96,4 +105,52 @@ export function computeTaxCents(
     return Math.round(subtotalCents * FL_TAX_RATE);
   }
   return 0;
+}
+
+export interface OrderTotals {
+  subtotalCents: number;
+  discountCents: number;
+  couponCode: string | null;
+  couponLabel: string | null;
+  couponError: string | null;
+  shippingCents: number;
+  taxCents: number;
+  totalCents: number;
+}
+
+/**
+ * The single place order totals are assembled, used by both checkout routes so
+ * the two can't drift.
+ *
+ * Order of operations, deliberately:
+ *   1. subtotal from the server-recomputed cart
+ *   2. coupon discount, clamped to the subtotal
+ *   3. free-shipping threshold tested against the PRE-discount subtotal, so a
+ *      coupon can never push an order back under the threshold. Testing it
+ *      post-discount meant that on a $100–$104.99 subtotal, applying $5 off
+ *      lost free shipping and the customer's total went UP by $0.99.
+ *   4. FL tax on the DISCOUNTED subtotal, and never on shipping — a seller
+ *      discount reduces taxable receipts
+ */
+export function computeOrderTotals(
+  priced: PricedCart,
+  couponCodeRaw: unknown,
+  country?: string | null,
+  state?: string | null
+): OrderTotals {
+  const coupon = applyCoupon(couponCodeRaw, priced.subtotalCents);
+  const discountedSubtotal = priced.subtotalCents - coupon.discountCents;
+  const shippingCents = computeShippingCents(priced.subtotalCents);
+  const taxCents = computeTaxCents(discountedSubtotal, country, state);
+
+  return {
+    subtotalCents: priced.subtotalCents,
+    discountCents: coupon.discountCents,
+    couponCode: coupon.code,
+    couponLabel: coupon.label,
+    couponError: coupon.error,
+    shippingCents,
+    taxCents,
+    totalCents: discountedSubtotal + shippingCents + taxCents,
+  };
 }
