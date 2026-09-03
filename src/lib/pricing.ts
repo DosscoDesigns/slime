@@ -125,8 +125,10 @@ export interface OrderTotals {
  * Order of operations, deliberately:
  *   1. subtotal from the server-recomputed cart
  *   2. coupon discount, clamped to the subtotal
- *   3. free-shipping threshold tested against the DISCOUNTED subtotal — a $100
- *      order with $5 off is a $95 order and pays shipping
+ *   3. free-shipping threshold tested against the PRE-discount subtotal, so a
+ *      coupon can never push an order back under the threshold. Testing it
+ *      post-discount meant that on a $100–$104.99 subtotal, applying $5 off
+ *      lost free shipping and the customer's total went UP by $0.99.
  *   4. FL tax on the DISCOUNTED subtotal, and never on shipping — a seller
  *      discount reduces taxable receipts
  */
@@ -138,7 +140,7 @@ export function computeOrderTotals(
 ): OrderTotals {
   const coupon = applyCoupon(couponCodeRaw, priced.subtotalCents);
   const discountedSubtotal = priced.subtotalCents - coupon.discountCents;
-  const shippingCents = computeShippingCents(discountedSubtotal);
+  const shippingCents = computeShippingCents(priced.subtotalCents);
   const taxCents = computeTaxCents(discountedSubtotal, country, state);
 
   return {
