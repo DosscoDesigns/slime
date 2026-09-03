@@ -18,23 +18,21 @@ export default function Gallery() {
           transition={{ type: "spring", stiffness: 50 }}
         >
           <span className="text-lime text-sm font-bold tracking-widest uppercase">
-            The Real Thing
+            Gallery
           </span>
           <h2 className="text-4xl sm:text-6xl font-black mt-4 mb-6">
-            No Stock Photos.{" "}
-            <span className="text-lime">Just Slime.</span>
+            Send Us Your{" "}
+            <span className="text-lime">Pics!</span>
           </h2>
           <p className="text-gray-400 max-w-xl mx-auto text-lg">
-            Every picture below is our powder, mixed on site, in the hands of a
-            real group. This is what a few hundred people and a pallet of kits
-            looks like.
+            Slimed your group? Tag us and we&apos;ll put the best shots up here.
           </p>
         </motion.div>
 
         {/* Masonry via CSS columns — the set is a mix of portrait and
             landscape, and columns keep the varied aspect ratios intact
             instead of cropping everything to a uniform tile. */}
-        <div className="columns-2 md:columns-3 lg:columns-4 gap-4 [column-fill:_balance]">
+        <div className="columns-2 md:columns-3 lg:columns-4 gap-4 [column-fill:_balance] max-w-5xl mx-auto">
           {GALLERY_PHOTOS.map((photo, i) => (
             <motion.figure
               key={photo.slug}

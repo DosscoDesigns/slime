@@ -10,10 +10,10 @@ const steps = [
     description:
       "Tear open a pouch and dump the powder into any standard 5-gallon bucket. One pouch = one bucket = 5 gallons of slime.",
     icon: "🪣",
-    photo: "powder",
-    photoW: 1024,
-    photoH: 683,
-    photoAlt: "Slime powder poured out and ready for water",
+    photo: "bucket-carry",
+    photoW: 700,
+    photoH: 933,
+    photoAlt: "A kid carrying a full bucket of slime across the field, sprayer in the other hand",
   },
   {
     number: "02",
@@ -132,9 +132,7 @@ export default function HowItWorks() {
                     transition={{ type: "spring", stiffness: 200, damping: 20 }}
                   >
                     <img
-                      src={`/photos/${step.photo}-${
-                        step.photo === "powder" ? "1024" : "620"
-                      }.webp`}
+                      src={`/photos/${step.photo}-${step.photoW}.webp`}
                       width={step.photoW}
                       height={step.photoH}
                       alt={step.photoAlt}
