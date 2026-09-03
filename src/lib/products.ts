@@ -18,23 +18,16 @@ export interface AddonDef {
   /**
    * Optional quantity break. Every complete bundle of `quantity` costs
    * `priceCents`; any remainder is charged at kitPriceCents each.
+   *
+   * Nothing sets this today — buckets used it before they were dropped as an
+   * add-on (they can't be shipped economically: 8 nested pails bill ~41 lb
+   * dimensional, ~$90 to the west coast against $48 of product). Kept because
+   * sprayers are the obvious next candidate at 12 for $18.
    */
   bulk?: { quantity: number; priceCents: number };
 }
 
 export const ADDON_DEFS: AddonDef[] = [
-  {
-    id: "buckets",
-    name: "5-Gallon Buckets",
-    description: "Mix your slime right in the bucket",
-    retailPrice: 8,
-    retailPriceCents: 800,
-    kitPrice: 8,
-    kitPriceCents: 800,
-    icon: "🪣",
-    suggestedPer20: 4,
-    bulk: { quantity: 8, priceCents: 4800 },
-  },
   {
     id: "sprayers",
     name: "Pump Sprayers",
@@ -139,10 +132,10 @@ function toQty(n: unknown): number {
 /**
  * Price one add-on line, honouring any quantity break.
  *
- * Buckets are $8 each or 8 for $48, so 12 buckets = one $48 bundle plus 4
+ * With a bulk of 8 @ $48 and a unit of $8, 12 units = one $48 bundle plus 4
  * singles. This is the single source of truth for add-on line pricing — the
- * KitWizard imports it too, so what the customer sees is what the server
- * charges.
+ * KitWizard and CartProvider import it too, so what the customer sees is what
+ * the server charges.
  */
 export function addonLineCents(addon: AddonDef, quantity: number): number {
   const q = toQty(quantity);
