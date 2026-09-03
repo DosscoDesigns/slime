@@ -7,8 +7,16 @@ import { priceKitCents, kitLineName } from "./products";
 /** Flat shipping fee (cents) applied to orders below the free threshold. */
 export const SHIPPING_FLAT_CENTS = 599;
 
-/** Order subtotal (cents) at/above which shipping is free. */
-export const SHIPPING_FREE_THRESHOLD_CENTS = 5000;
+/**
+ * Order subtotal (cents) at/above which shipping is free.
+ *
+ * Set at $100 deliberately. At the old $50 the threshold sat exactly on the
+ * 80-gallon kit's base price, so every Total Mayhem order shipped free on its
+ * own and a 40-gallon kit got there with almost any add-on — which meant the
+ * flat fee only ever applied to a bare 20-gallon kit. $100 makes add-on
+ * orders actually carry shipping.
+ */
+export const SHIPPING_FREE_THRESHOLD_CENTS = 10000;
 
 /**
  * Florida sales tax rate. Dossco Designs / The Slime Co has nexus in FL

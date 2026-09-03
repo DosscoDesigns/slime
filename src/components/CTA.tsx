@@ -84,7 +84,7 @@ export default function CTA() {
           </motion.a>
 
           <p className="text-gray-600 text-sm mt-6">
-            Free shipping on orders over $50
+            Free shipping on orders of $100 or more
           </p>
         </motion.div>
       </div>
