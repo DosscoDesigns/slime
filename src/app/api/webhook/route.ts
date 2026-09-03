@@ -18,6 +18,51 @@ function getStripe() {
   });
 }
 
+/**
+ * Resolve the charge behind a PaymentIntent, whatever API version the webhook
+ * endpoint is pinned to.
+ *
+ * Everything customer-facing in the order email — name, email, phone, ship-to
+ * address, receipt link — comes off the charge, and the customer's BCC copy is
+ * addressed from it too. So a null charge doesn't just degrade the email, it
+ * means the customer gets nothing.
+ *
+ * `latest_charge` only exists from API version 2022-11-15 onward; older
+ * versions (this endpoint is pinned to 2020-08-27) send an embedded
+ * `charges.data[]` list instead. We try the modern field, then the legacy
+ * shape, then fall back to querying by payment_intent — which works on every
+ * version and also covers an event payload that carried neither.
+ */
+async function resolveCharge(
+  stripe: Stripe,
+  pi: Stripe.PaymentIntent
+): Promise<Stripe.Charge | null> {
+  if (pi.latest_charge) {
+    return typeof pi.latest_charge === "string"
+      ? await stripe.charges.retrieve(pi.latest_charge)
+      : pi.latest_charge;
+  }
+
+  // Pre-2022-11-15 payload shape, absent from the current SDK's types.
+  const legacy = (pi as unknown as { charges?: { data?: Stripe.Charge[] } })
+    .charges?.data?.[0];
+  if (legacy) return legacy;
+
+  try {
+    const found = await stripe.charges.list({
+      payment_intent: pi.id,
+      limit: 1,
+    });
+    return found.data[0] ?? null;
+  } catch (err) {
+    console.error(
+      `could not resolve charge for ${pi.id}:`,
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
@@ -61,20 +106,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, action: "skipped_duplicate" });
   }
 
-  const notificationEmail = pi.metadata.notification_email;
+  // Prefer the recipient baked into the PI at creation, but fall back to the
+  // current env value so an older PI (or one created before the env var was
+  // set) still notifies someone instead of being silently dropped.
+  const notificationEmail =
+    pi.metadata.notification_email || process.env.ORDER_NOTIFICATION_EMAIL;
   if (!notificationEmail) {
-    console.warn(`no notification_email in PI metadata (${pi.id}) — skipping`);
+    console.error(
+      `ORDER_NOTIFICATION_EMAIL unset and no notification_email in PI metadata (${pi.id}) — order NOT emailed to anyone`
+    );
     return NextResponse.json({ received: true, action: "no_recipient" });
   }
 
-  // Pull the latest charge for customer/shipping/billing details.
-  let charge: Stripe.Charge | null = null;
-  if (pi.latest_charge) {
-    charge =
-      typeof pi.latest_charge === "string"
-        ? await stripe.charges.retrieve(pi.latest_charge)
-        : pi.latest_charge;
-  }
+  const charge = await resolveCharge(stripe, pi);
 
   const { subject, text, html } = renderOrderEmail({ pi, charge });
 
