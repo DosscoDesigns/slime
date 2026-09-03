@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import {
   priceCart,
-  computeShippingCents,
-  computeTaxCents,
+  computeOrderTotals,
   type CartLineInput,
 } from "@/lib/pricing";
 
@@ -21,6 +20,7 @@ interface UpdateBody {
   items: CartLineInput[];
   state?: string;
   country?: string;
+  couponCode?: string;
 }
 
 // Recompute the order total when the customer's shipping address changes in
@@ -29,7 +29,7 @@ interface UpdateBody {
 // charge reflects the correct total before confirmation. Mirrors rkpm.
 export async function POST(request: NextRequest) {
   try {
-    const { paymentIntentId, items, country, state } =
+    const { paymentIntentId, items, country, state, couponCode } =
       (await request.json()) as UpdateBody;
 
     if (!paymentIntentId) {
@@ -49,30 +49,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const shippingCents = computeShippingCents(priced.subtotalCents);
-    const taxCents = computeTaxCents(priced.subtotalCents, country, state);
-    const totalCents = priced.subtotalCents + shippingCents + taxCents;
+    const totals = computeOrderTotals(priced, couponCode, country, state);
 
     const stripe = getStripe();
     await stripe.paymentIntents.update(paymentIntentId, {
-      amount: totalCents,
+      amount: totals.totalCents,
       metadata: {
         items: JSON.stringify(priced.lines),
-        subtotal_cents: String(priced.subtotalCents),
-        shipping_cents: String(shippingCents),
-        tax_cents: String(taxCents),
+        subtotal_cents: String(totals.subtotalCents),
+        discount_cents: String(totals.discountCents),
+        coupon_code: totals.couponCode ?? "",
+        shipping_cents: String(totals.shippingCents),
+        tax_cents: String(totals.taxCents),
         ship_to_state: state ?? "",
         ship_to_country: country ?? "",
         notification_email: process.env.ORDER_NOTIFICATION_EMAIL ?? "",
       },
     });
 
-    return NextResponse.json({
-      subtotalCents: priced.subtotalCents,
-      shippingCents,
-      taxCents,
-      totalCents,
-    });
+    return NextResponse.json(totals);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("update-amount error:", message);

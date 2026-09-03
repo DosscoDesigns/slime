@@ -1,6 +1,20 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useSyncExternalStore, ReactNode } from "react";
+import { ADDONS_BY_ID, addonLineCents } from "@/lib/products";
+
+/**
+ * Sum add-on lines through the shared pricer so quantity breaks (buckets are
+ * 8 for $48) are honoured here exactly as the server honours them. Summing
+ * `priceCents * quantity` would show 8 buckets as $64 while the server
+ * charged $48.
+ */
+function sumAddonCents(addons: KitAddon[]): number {
+  return addons.reduce((s, a) => {
+    const def = ADDONS_BY_ID[a.id];
+    return s + (def ? addonLineCents(def, a.quantity) : a.priceCents * a.quantity);
+  }, 0);
+}
 
 export interface KitAddon {
   id: string;
@@ -127,17 +141,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const newAddons = quantity <= 0
           ? item.addons.filter((a) => a.id !== addonId)
           : item.addons.map((a) => (a.id === addonId ? { ...a, quantity } : a));
-        const oldAddonTotal = item.addons.reduce((s, a) => s + a.price * a.quantity, 0);
-        const oldAddonTotalCents = item.addons.reduce((s, a) => s + a.priceCents * a.quantity, 0);
-        const basePrice = item.price - oldAddonTotal;
+        const oldAddonTotalCents = sumAddonCents(item.addons);
         const basePriceCents = item.priceCents - oldAddonTotalCents;
-        const addonTotal = newAddons.reduce((s, a) => s + a.price * a.quantity, 0);
-        const addonTotalCents = newAddons.reduce((s, a) => s + a.priceCents * a.quantity, 0);
+        const addonTotalCents = sumAddonCents(newAddons);
+        const newPriceCents = basePriceCents + addonTotalCents;
         return {
           ...item,
           addons: newAddons,
-          price: basePrice + addonTotal,
-          priceCents: basePriceCents + addonTotalCents,
+          price: newPriceCents / 100,
+          priceCents: newPriceCents,
           subtitle: newAddons.length > 0
             ? `${item.subtitle.split(" +")[0]} + ${newAddons.length} add-on${newAddons.length > 1 ? "s" : ""}`
             : item.subtitle.split(" +")[0],

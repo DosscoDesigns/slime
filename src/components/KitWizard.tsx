@@ -6,6 +6,7 @@ import { useCart, KitAddon } from "./CartProvider";
 import {
   ADDON_DEFS,
   KIT_TIERS,
+  addonLineCents,
   type AddonDef,
   type KitTier,
   type SlimeColor,
@@ -106,13 +107,16 @@ export default function KitWizard({ tier, onClose }: KitWizardProps) {
   }, [tier]);
 
   // Pricing
-  const addonTotal = useMemo(() => {
-    return ADDON_DEFS.reduce((sum, a) => sum + a.kitPrice * (addonQtys[a.id] || 0), 0);
+  // Priced through the shared helper so quantity breaks (buckets 8 for $48)
+  // show here exactly as the server will charge them.
+  const addonTotalCents = useMemo(() => {
+    return ADDON_DEFS.reduce(
+      (sum, a) => sum + addonLineCents(a, addonQtys[a.id] || 0),
+      0
+    );
   }, [addonQtys]);
 
-  const addonTotalCents = useMemo(() => {
-    return ADDON_DEFS.reduce((sum, a) => sum + a.kitPriceCents * (addonQtys[a.id] || 0), 0);
-  }, [addonQtys]);
+  const addonTotal = addonTotalCents / 100;
 
   const totalPrice = (tier?.basePrice ?? 0) + addonTotal;
   const totalPriceCents = (tier?.basePriceCents ?? 0) + addonTotalCents;
@@ -375,12 +379,20 @@ export default function KitWizard({ tier, onClose }: KitWizardProps) {
                                   <h4 className="text-white font-semibold text-sm">
                                     {addon.name}
                                   </h4>
-                                  <span className="text-gray-600 line-through text-xs">
-                                    ${addon.retailPrice}
-                                  </span>
+                                  {addon.kitPrice < addon.retailPrice && (
+                                    <span className="text-gray-600 line-through text-xs">
+                                      ${addon.retailPrice}
+                                    </span>
+                                  )}
                                   <span className="text-lime text-sm font-bold">
                                     ${addon.kitPrice}/ea
                                   </span>
+                                  {addon.bulk && (
+                                    <span className="text-lime/80 text-xs font-semibold">
+                                      or {addon.bulk.quantity} for $
+                                      {(addon.bulk.priceCents / 100).toFixed(0)}
+                                    </span>
+                                  )}
                                 </div>
                                 <p className="text-gray-500 text-xs">
                                   {addon.description}
@@ -509,7 +521,7 @@ export default function KitWizard({ tier, onClose }: KitWizardProps) {
                                     <span className="text-gray-600">&times;{qty}</span>
                                   </span>
                                   <span className="text-gray-300">
-                                    ${(addon.kitPrice * qty).toFixed(2)}
+                                    ${(addonLineCents(addon, qty) / 100).toFixed(2)}
                                   </span>
                                 </div>
                               );

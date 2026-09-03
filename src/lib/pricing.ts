@@ -3,6 +3,7 @@
 // address change). Mirrors rkpm's flat-rate, ship-to-driven approach.
 
 import { priceKitCents, kitLineName } from "./products";
+import { applyCoupon } from "./coupons";
 
 /** Flat shipping fee (cents) applied to orders below the free threshold. */
 export const SHIPPING_FLAT_CENTS = 599;
@@ -104,4 +105,50 @@ export function computeTaxCents(
     return Math.round(subtotalCents * FL_TAX_RATE);
   }
   return 0;
+}
+
+export interface OrderTotals {
+  subtotalCents: number;
+  discountCents: number;
+  couponCode: string | null;
+  couponLabel: string | null;
+  couponError: string | null;
+  shippingCents: number;
+  taxCents: number;
+  totalCents: number;
+}
+
+/**
+ * The single place order totals are assembled, used by both checkout routes so
+ * the two can't drift.
+ *
+ * Order of operations, deliberately:
+ *   1. subtotal from the server-recomputed cart
+ *   2. coupon discount, clamped to the subtotal
+ *   3. free-shipping threshold tested against the DISCOUNTED subtotal — a $100
+ *      order with $5 off is a $95 order and pays shipping
+ *   4. FL tax on the DISCOUNTED subtotal, and never on shipping — a seller
+ *      discount reduces taxable receipts
+ */
+export function computeOrderTotals(
+  priced: PricedCart,
+  couponCodeRaw: unknown,
+  country?: string | null,
+  state?: string | null
+): OrderTotals {
+  const coupon = applyCoupon(couponCodeRaw, priced.subtotalCents);
+  const discountedSubtotal = priced.subtotalCents - coupon.discountCents;
+  const shippingCents = computeShippingCents(discountedSubtotal);
+  const taxCents = computeTaxCents(discountedSubtotal, country, state);
+
+  return {
+    subtotalCents: priced.subtotalCents,
+    discountCents: coupon.discountCents,
+    couponCode: coupon.code,
+    couponLabel: coupon.label,
+    couponError: coupon.error,
+    shippingCents,
+    taxCents,
+    totalCents: discountedSubtotal + shippingCents + taxCents,
+  };
 }
