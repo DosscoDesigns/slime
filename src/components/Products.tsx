@@ -184,7 +184,7 @@ export default function Products() {
                   <div className="mt-8 flex items-center justify-between">
                     <div>
                       <span className="text-3xl font-black text-white">
-                        ${tier.basePrice}
+                        ${tier.basePrice.toFixed(2)}
                       </span>
                     </div>
                     <motion.button

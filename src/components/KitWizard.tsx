@@ -118,8 +118,10 @@ export default function KitWizard({ tier, onClose }: KitWizardProps) {
 
   const addonTotal = addonTotalCents / 100;
 
-  const totalPrice = (tier?.basePrice ?? 0) + addonTotal;
   const totalPriceCents = (tier?.basePriceCents ?? 0) + addonTotalCents;
+  // Derived from cents, not summed as floats — cents is what the server
+  // charges, so the displayed total can't drift from it.
+  const totalPrice = totalPriceCents / 100;
 
   // Color display
   const colorLabel =
