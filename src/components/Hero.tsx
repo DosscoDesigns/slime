@@ -37,8 +37,14 @@ export default function Hero() {
           decoding="async"
         />
       </motion.div>
-      <div className="absolute inset-0 bg-black/65" />
-      <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/70 to-[#0a0a0a]/40" />
+      {/* One flat scrim for text contrast, plus a bottom-only fade that
+          hands off into the next section. Keep these light — stacking a
+          full-strength gradient on top of the scrim blacks the photo out. */}
+      <div className="absolute inset-0 bg-black/45" />
+      {/* Centre vignette: buys contrast under the copy block without
+          flattening the whole photo the way a heavier flat scrim would. */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.55)_0%,transparent_65%)]" />
+      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[#0a0a0a] to-transparent" />
 
       {/* Animated background blobs */}
       <div className="absolute inset-0 opacity-60">
@@ -124,7 +130,7 @@ export default function Hero() {
 
         {/* Subheadline */}
         <motion.p
-          className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10"
+          className="text-lg sm:text-xl text-gray-200 max-w-2xl mx-auto mb-10 [text-shadow:0_1px_12px_rgba(0,0,0,0.9)]"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, type: "spring" }}
@@ -189,7 +195,7 @@ export default function Hero() {
               <div className="text-2xl sm:text-3xl font-black text-lime">
                 {stat.value}
               </div>
-              <div className="text-xs sm:text-sm text-gray-500 mt-1">
+              <div className="text-xs sm:text-sm text-gray-300 mt-1">
                 {stat.label}
               </div>
             </motion.div>
