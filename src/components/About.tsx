@@ -7,17 +7,20 @@ const highlights = [
   {
     title: "Youth Groups",
     description: "The ultimate activity for lock-ins, VBS, summer camp, and retreats.",
-    image: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=500&h=350&fit=crop",
+    image: "youth-groups",
+    alt: "A youth group crowd covered in slime, sprayers raised",
   },
   {
     title: "Events & Parties",
     description: "Birthday parties, field days, fundraisers — slime makes everything better.",
-    image: "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=500&h=350&fit=crop",
+    image: "events-parties",
+    alt: "A few hundred people gathered on the field after a slime event",
   },
   {
     title: "Content Creators",
     description: "YouTube, TikTok, Instagram — slime makes for incredible content.",
-    image: "https://images.unsplash.com/photo-1611162616475-46b635cb6868?w=500&h=350&fit=crop",
+    image: "content-creators",
+    alt: "Two people mugging for the camera, covered in pink and blue slime",
   },
 ];
 
@@ -67,9 +70,13 @@ export default function About() {
           >
             <div className="rounded-3xl overflow-hidden aspect-square relative">
               <img
-                src="https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600&h=600&fit=crop"
-                alt="Colorful slime"
+                src="/photos/joy-800.webp"
+                srcSet="/photos/joy-800.webp 800w, /photos/joy-1400.webp 1400w"
+                sizes="(min-width: 768px) 40vw, 90vw"
+                alt="A kid mid-yell, drenched in slime, at the launch event"
                 className="w-full h-full object-cover"
+                loading="lazy"
+                decoding="async"
               />
               <div className="absolute inset-0 bg-gradient-to-tr from-lime/20 to-purple/20 mix-blend-overlay" />
             </div>
@@ -113,9 +120,15 @@ export default function About() {
             >
               <div className="aspect-video overflow-hidden relative">
                 <motion.img
-                  src={item.image}
-                  alt={item.title}
+                  src={`/photos/${item.image}-700.webp`}
+                  srcSet={`/photos/${item.image}-700.webp 700w, /photos/${item.image}-${
+                    item.image === "events-parties" ? "1024" : "1200"
+                  }.webp ${item.image === "events-parties" ? "1024" : "1200"}w`}
+                  sizes="(min-width: 768px) 33vw, 90vw"
+                  alt={item.alt}
                   className="w-full h-full object-cover"
+                  loading="lazy"
+                  decoding="async"
                   whileHover={{ scale: 1.05 }}
                   transition={{ duration: 0.4 }}
                 />

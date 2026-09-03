@@ -13,14 +13,35 @@ export default function Hero() {
   const y = useTransform(scrollYProgress, [0, 1], [0, 200]);
   const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
   const scale = useTransform(scrollYProgress, [0, 0.5], [1, 0.9]);
+  // Backdrop moves less than the copy (classic parallax) and eases in
+  // slightly so the edges never expose the page background.
+  const bgY = useTransform(scrollYProgress, [0, 1], [0, 80]);
+  const bgScale = useTransform(scrollYProgress, [0, 1], [1.08, 1.16]);
 
   return (
     <section
       ref={ref}
       className="relative min-h-screen flex items-center justify-center overflow-hidden"
     >
+      {/* Launch-night photo backdrop. Drifts slightly slower than the copy
+          for depth. Overlaid twice — a flat scrim for contrast, then a
+          bottom-up gradient so the headline never sits on busy grass. */}
+      <motion.div className="absolute inset-0" style={{ y: bgY, scale: bgScale }}>
+        <img
+          src="/photos/hero-field-1600.webp"
+          srcSet="/photos/hero-field-900.webp 900w, /photos/hero-field-1600.webp 1600w, /photos/hero-field-2400.webp 2400w"
+          sizes="100vw"
+          alt="A field full of people in the middle of a slime war"
+          className="w-full h-full object-cover"
+          fetchPriority="high"
+          decoding="async"
+        />
+      </motion.div>
+      <div className="absolute inset-0 bg-black/65" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/70 to-[#0a0a0a]/40" />
+
       {/* Animated background blobs */}
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 opacity-60">
         <motion.div
           className="absolute top-1/4 left-1/4 w-96 h-96 bg-lime/20 rounded-full blur-3xl"
           animate={{
