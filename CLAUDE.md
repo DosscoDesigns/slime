@@ -75,10 +75,43 @@ Copy `.env.example` to `.env.local` and fill in values:
 
 ## Stripe Integration
 
-- **Current:** API route at `/api/checkout` creates Stripe Checkout Sessions
-- **Products:** Defined inline in the API route (slime-only, starter-kit, youth-group-kit)
-- **Shipping:** US only, collected at checkout
-- **Future:** Connect to Stripe org when created, move products to Stripe Dashboard, add webhooks for order fulfillment
+**🚨 PRODUCTION TAKES REAL MONEY (since 2026-09-03).** `main` auto-deploys to
+`www.theslimecompany.com` via Vercel (`dossco/slime`), so **a merge to `main` is a
+production release** — there is no staging step. Live keys are on
+`acct_1KqoeGD4Rj7DgZGG` (Dossco Designs LLC); secrets live in 1Password DEV as
+`dd.stripe.slime` and `dd.mailgun.slime`.
+
+- **PaymentIntents + Stripe Elements**, not Checkout Sessions. That's why there's no
+  `allow_promotion_codes` — discounts are computed server-side (`src/lib/coupons.ts`).
+- **Products** are in `src/lib/products.ts` (`KIT_TIERS` 20/40/80 gallon + `ADDON_DEFS`),
+  not in the API route and not in the Stripe Dashboard.
+- **Never trust a client-supplied price.** `priceCart()` recomputes every line from the
+  kit config; the client sends a coupon *code*, never an amount.
+- **`computeOrderTotals()` in `src/lib/pricing.ts` is the single place totals are
+  assembled** — both `/api/checkout` and `/api/checkout/update-amount` call it. Don't
+  reintroduce per-route math.
+- **Shipping:** US only. Flat $5.99, free at $100+ subtotal (tested *pre*-discount so a
+  coupon can't push an order under the line and raise the total). FL sales tax 7.5% on
+  the discounted subtotal, never on shipping.
+- **Webhook:** `/api/webhook` on `payment_intent.succeeded` → Mailgun order email.
+  The live endpoint is pinned to API version **2020-08-27**, which predates
+  `latest_charge` — `resolveCharge()` handles that; don't "simplify" it back.
+- **`NEXT_PUBLIC_*` is baked into the bundle at build time**, so an env-var change needs
+  a redeploy. Verify by grepping the served `/_next/static/*.js` chunks for
+  `pk_live`/`pk_test`, not the HTML.
+
+## Product Decisions
+
+- **Buckets are a NO-GO as a shipped add-on** (removed 2026-09-03). Eight nested 5-gal
+  pails bill ~41 lb *dimensional* against ~16 lb actual; FL→CA is ~$90 delivered against
+  $48 of product. Customers buy their own locally. Buckets are still purchased
+  **internally** for mixing/storing powder — that's unrelated.
+- **Removing an add-on requires a cart migration.** `priceKitCents()` throws on an
+  unknown add-on, so a returning customer's stale `localStorage` cart would 400 at
+  checkout. `pruneRetiredAddons()` in `CartProvider.tsx` runs in both the read path and
+  the render path — both are needed.
+- **`ADDON_DEFS.bulk`** implements quantity breaks (complete bundles at bundle price,
+  remainder at unit). Currently unused; sprayers are the likely next user.
 
 ## Design System
 
@@ -86,7 +119,11 @@ Copy `.env.example` to `.env.local` and fill in values:
 - **Colors:** Lime (primary), Purple, Pink, Cyan (accents)
 - **Fonts:** Geist Sans + Geist Mono (Google Fonts via next/font)
 - **Animation philosophy:** Spring physics, scroll-linked motion, entrance animations on viewport intersection. Every interactive element should feel alive.
-- **Images:** Currently using Unsplash stock photos. Replace with real product photography when available.
+- **Images:** Real launch-event photography in `public/photos/` — pre-optimized WebP with
+  EXIF stripped, referenced via plain `<img>` + `srcSet` (not `next/image`, to avoid
+  Vercel image-transformation cost). Regenerate derivatives with
+  `TEMP/optimize-photos.py`; originals live in iCloud, not the repo. The hero backdrop
+  is a placeholder pending a hero video.
 
 ## Done Checklist
 
