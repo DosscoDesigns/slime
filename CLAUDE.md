@@ -113,6 +113,44 @@ production release** — there is no staging step. Live keys are on
 - **`ADDON_DEFS.bulk`** implements quantity breaks (complete bundles at bundle price,
   remainder at unit). Currently unused; sprayers are the likely next user.
 
+## SEO is a standing requirement, not a project
+
+**Every change and every deployment must leave the site's SEO the same or better,
+and must actively look for improvements — this is not a one-time task that was
+finished.** Organic search is the only acquisition channel this site has; there is
+no ad spend. The competitor (Party Goat) outranks us almost entirely on content
+depth, so ceded ground is expensive to win back.
+
+**On every change, before committing:**
+
+- **Never regress the surface.** `src/lib/site.ts` is the single source for the
+  canonical host, name and description; `layout.tsx` metadata, `sitemap.ts`,
+  `robots.ts` and `StructuredData.tsx` all read from it. Changing one by hand
+  instead of the shared constant is how these drift.
+- **New route ⇒ add it to `sitemap.ts`**, give it a real `<h1>` and page-level
+  `metadata` (title, description, canonical), and decide explicitly whether it
+  should be indexed. Anything post-purchase or with an id in the query string is
+  `noindex` (see `src/app/success/layout.tsx`).
+- **Pricing, shipping or availability change ⇒ the JSON-LD must follow.** It reads
+  from `products.ts`/`pricing.ts` for exactly this reason. Structured data that
+  disagrees with the visible price is a Merchant Center disapproval.
+- **New image ⇒ real descriptive `alt`, and explicit `width`/`height`** (CLS is a
+  ranking input). Write alt text against the full-size original, not a thumbnail.
+- **Don't regress Core Web Vitals.** LCP is the hero image. Adding blocking
+  script/font/animation work above the fold is a ranking cost, not just a UX one.
+- **Copy edits are SEO edits.** Headings carry keyword weight; prefer wording that
+  a buyer would actually search ("slime powder kit", "slime the teacher
+  fundraiser", "color run") over pure brand voice, where the two conflict.
+
+**Scan for opportunities as part of the work, don't wait to be asked.** When
+touching the site, check whether a page deserves to exist, an existing page is
+thin, structured data could be richer, or a query we should own has no page. Say
+so even if it isn't in scope.
+
+**Verify, don't assume.** Build, then check the served output — JSON-LD parses,
+head tags render, `/robots.txt` and `/sitemap.xml` return 200. `NEXT_PUBLIC_*` and
+metadata are baked at build time, so a change needs a redeploy to take effect.
+
 ## Design System
 
 - **Theme:** Dark background (#0a0a0a), lime green (#a3e635) primary accent
@@ -134,3 +172,8 @@ Before committing:
 - [ ] No secrets in staged files
 - [ ] `.env.example` updated if env vars changed
 - [ ] No debug/test files outside `TEMP/`
+- [ ] **SEO not regressed, and improvements looked for** — new routes in
+      `sitemap.ts` with their own metadata and `<h1>`; JSON-LD still matches the
+      visible price/shipping/availability; every new image has real `alt` plus
+      `width`/`height`; nothing new blocking above the fold. See *SEO is a
+      standing requirement* above.
