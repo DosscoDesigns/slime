@@ -19,7 +19,7 @@ export const SITE_DESCRIPTION =
 /** Legal entity behind the brand, used in Organization structured data. */
 export const LEGAL_NAME = "Dossco Designs LLC";
 
-export const CONTACT_EMAIL = "hello@theslimeco.com";
+export const CONTACT_EMAIL = "info@theslimecompany.com";
 
 /** 1200×630 share card. Absolute URLs are required by OG/Twitter consumers. */
 export const OG_IMAGE = `${SITE_URL}/og.jpg`;
