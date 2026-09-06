@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
+import { CONTACT_EMAIL } from "@/lib/site";
 
 type ModalType = "shipping" | "privacy" | "terms" | null;
 
@@ -239,7 +240,7 @@ export default function Footer() {
                 </li>
                 <li>
                   <a
-                    href="mailto:hello@theslimeco.com"
+                    href={`mailto:${CONTACT_EMAIL}`}
                     className="text-gray-500 hover:text-lime transition-colors text-sm"
                   >
                     Contact Us

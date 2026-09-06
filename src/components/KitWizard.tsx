@@ -107,16 +107,14 @@ export default function KitWizard({ tier, onClose }: KitWizardProps) {
   }, [tier]);
 
   // Pricing
-  // Priced through the shared helper so quantity breaks (buckets 8 for $48)
-  // show here exactly as the server will charge them.
+  // Priced through the shared helper so any quantity break shows here exactly
+  // as the server will charge it.
   const addonTotalCents = useMemo(() => {
     return ADDON_DEFS.reduce(
       (sum, a) => sum + addonLineCents(a, addonQtys[a.id] || 0),
       0
     );
   }, [addonQtys]);
-
-  const addonTotal = addonTotalCents / 100;
 
   const totalPriceCents = (tier?.basePriceCents ?? 0) + addonTotalCents;
   // Derived from cents, not summed as floats — cents is what the server
