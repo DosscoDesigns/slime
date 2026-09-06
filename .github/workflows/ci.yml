@@ -78,9 +78,12 @@ jobs:
           # gitleaks needs history to scan commits, not just the tree.
           fetch-depth: 0
 
-      # Deliberately the binary, not gitleaks/gitleaks-action@v2: that action
-      # requires a paid GITLEAKS_LICENSE for repos owned by an organization,
-      # and DosscoDesigns is one. The CLI is the same scanner, no license.
+      # Deliberately the binary, not gitleaks/gitleaks-action@v2. That action
+      # requires a GITLEAKS_LICENSE for repos owned by an organization, and
+      # DosscoDesigns is one. The licence is FREE — a signup form that emails
+      # a key — so this is not a cost decision: it avoids a signup, a secret
+      # to store, and a key that can expire out from under CI. The CLI is the
+      # same scanner and needs none of that.
       - name: Install gitleaks
         run: |
           curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
