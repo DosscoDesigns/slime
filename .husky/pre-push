@@ -1,0 +1,8 @@
+# The real gate. DosscoDesigns is on GitHub Free, so required status checks
+# are unavailable on private repos; slime is public and has them, but every
+# commit in this fleet originates on dd-mini, which makes a local pre-push a
+# genuine gate rather than advice.
+#
+# Typecheck before tests: it fails in seconds and catches more.
+pnpm typecheck
+pnpm test
