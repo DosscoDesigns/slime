@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import {
-  priceCart,
-  computeOrderTotals,
-  type CartLineInput,
-} from "@/lib/pricing";
+import { priceCart, type CartLineInput } from "@/lib/pricing";
+import { resolveOrderTotals } from "@/lib/coupon-redemption";
 import { logError, logWarn, errorContext } from "@/lib/logger";
 
 function getStripe() {
@@ -41,12 +38,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const stripe = getStripe();
+
     // No ship-to address yet at intent creation, so tax is 0 until the
     // customer enters a FL address (recomputed in /update-amount). Shipping
     // and any coupon discount don't depend on destination.
-    const totals = computeOrderTotals(priced, body.couponCode);
+    const totals = await resolveOrderTotals(stripe, priced, body.couponCode);
 
-    const stripe = getStripe();
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totals.totalCents,
       currency: "usd",

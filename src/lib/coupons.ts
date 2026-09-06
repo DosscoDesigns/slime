@@ -7,17 +7,34 @@
 // only the code string, and the server looks up what it's worth. See
 // priceCart() in pricing.ts.
 
-export interface CouponDef {
+interface CouponBase {
   /** Canonical code, uppercase. Matching is case-insensitive. */
   code: string;
-  kind: "fixed";
-  /** Discount in cents, for kind "fixed". */
-  amountCents: number;
   /** Optional minimum subtotal (cents) before the code is valid. */
   minSubtotalCents?: number;
   /** Shown in the cart/checkout summary and the order email. */
   label: string;
+  /**
+   * Redeemable exactly once across the whole store. Enforcement lives in
+   * coupon-redemption.ts (Stripe is the ledger) — setting this alone does
+   * nothing, the routes must go through resolveOrderTotals().
+   */
+  singleUse?: boolean;
 }
+
+export interface FixedCoupon extends CouponBase {
+  kind: "fixed";
+  /** Discount in cents. */
+  amountCents: number;
+}
+
+export interface PercentCoupon extends CouponBase {
+  kind: "percent";
+  /** Whole percent off the subtotal, 1-100. */
+  percentOff: number;
+}
+
+export type CouponDef = FixedCoupon | PercentCoupon;
 
 const COUPONS: CouponDef[] = [
   {
@@ -25,6 +42,13 @@ const COUPONS: CouponDef[] = [
     kind: "fixed",
     amountCents: 500,
     label: "$5 off",
+  },
+  {
+    code: "SLIMECO20OFF",
+    kind: "percent",
+    percentOff: 20,
+    label: "20% off",
+    singleUse: true,
   },
 ];
 
@@ -60,6 +84,24 @@ const NO_COUPON: CouponResult = {
 };
 
 /**
+ * What a coupon is worth against a given subtotal, in cents.
+ *
+ * Percent codes are rounded to the nearest cent, and every kind is clamped to
+ * the subtotal so a discount can never exceed what is being bought (a negative
+ * line would be rejected by Stripe as an invalid amount).
+ */
+export function discountCentsFor(
+  coupon: CouponDef,
+  subtotalCents: number
+): number {
+  const raw =
+    coupon.kind === "percent"
+      ? Math.round((subtotalCents * coupon.percentOff) / 100)
+      : coupon.amountCents;
+  return Math.max(0, Math.min(raw, subtotalCents));
+}
+
+/**
  * Resolve a customer-supplied code against a subtotal.
  *
  * The discount is clamped to the subtotal so a total can never go negative,
@@ -84,7 +126,7 @@ export function applyCoupon(raw: unknown, subtotalCents: number): CouponResult {
 
   return {
     code: coupon.code,
-    discountCents: Math.min(coupon.amountCents, subtotalCents),
+    discountCents: discountCentsFor(coupon, subtotalCents),
     label: coupon.label,
     error: null,
   };

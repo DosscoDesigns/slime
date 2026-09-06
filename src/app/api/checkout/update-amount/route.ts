@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import {
-  priceCart,
-  computeOrderTotals,
-  type CartLineInput,
-} from "@/lib/pricing";
+import { priceCart, type CartLineInput } from "@/lib/pricing";
+import { resolveOrderTotals } from "@/lib/coupon-redemption";
 import { logError, errorContext } from "@/lib/logger";
 
 function getStripe() {
@@ -50,9 +47,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const totals = computeOrderTotals(priced, couponCode, country, state);
-
     const stripe = getStripe();
+    const totals = await resolveOrderTotals(
+      stripe,
+      priced,
+      couponCode,
+      country,
+      state
+    );
+
     await stripe.paymentIntents.update(paymentIntentId, {
       amount: totals.totalCents,
       metadata: {

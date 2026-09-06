@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { applyCoupon, normalizeCode, lookupCoupon } from "./coupons";
+import {
+  applyCoupon,
+  normalizeCode,
+  lookupCoupon,
+  discountCentsFor,
+} from "./coupons";
 
 /**
  * The code a customer types is never trusted for an amount — only for a
@@ -62,5 +67,61 @@ describe("applyCoupon", () => {
     // A cart object masquerading as a code must not produce a discount.
     const r = applyCoupon({ amountCents: 999999 }, 5000);
     expect(r.discountCents).toBe(0);
+  });
+});
+
+describe("percent coupons", () => {
+  it("takes 20% off the subtotal, rounded to the nearest cent", () => {
+    expect(applyCoupon("SLIMECO20OFF", 7398).discountCents).toBe(1480);
+    expect(applyCoupon("SLIMECO20OFF", 10000).discountCents).toBe(2000);
+    expect(applyCoupon("SLIMECO20OFF", 2199).discountCents).toBe(440);
+  });
+
+  it("scales with the cart instead of being a flat amount", () => {
+    const small = applyCoupon("SLIMECO20OFF", 5000).discountCents;
+    const large = applyCoupon("SLIMECO20OFF", 50000).discountCents;
+    expect(small).toBe(1000);
+    expect(large).toBe(10000);
+  });
+
+  /**
+   * Rounds to the nearest cent, so a discount is not exactly proportional
+   * across cart sizes: 20% of $21.99 is $4.398, billed as $4.40, while 20% of
+   * $219.90 is exactly $43.98. Pinned so nobody "fixes" it into a floor and
+   * silently starts shorting customers a cent.
+   */
+  it("rounds a half-cent up rather than truncating", () => {
+    expect(applyCoupon("SLIMECO20OFF", 2199).discountCents).toBe(440);
+    expect(applyCoupon("SLIMECO20OFF", 21990).discountCents).toBe(4398);
+  });
+
+  it("is case-insensitive like every other code", () => {
+    expect(applyCoupon(" slimeco20off ", 10000).discountCents).toBe(2000);
+  });
+
+  it("reports itself as 20% off, for the summary and the order email", () => {
+    const r = applyCoupon("SLIMECO20OFF", 10000);
+    expect(r.code).toBe("SLIMECO20OFF");
+    expect(r.label).toBe("20% off");
+    expect(r.error).toBeNull();
+  });
+
+  it("never discounts more than the subtotal", () => {
+    expect(applyCoupon("SLIMECO20OFF", 1).discountCents).toBeLessThanOrEqual(1);
+    expect(applyCoupon("SLIMECO20OFF", 0).discountCents).toBe(0);
+  });
+});
+
+describe("discountCentsFor", () => {
+  it("clamps a hypothetical over-100% code to the subtotal", () => {
+    // Guards the arithmetic itself, not the registry: a future 100%+ code
+    // must still never produce a negative order total.
+    const bogus = {
+      code: "BOGUS",
+      kind: "percent",
+      percentOff: 150,
+      label: "bogus",
+    } as const;
+    expect(discountCentsFor(bogus, 5000)).toBe(5000);
   });
 });
