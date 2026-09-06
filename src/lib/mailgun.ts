@@ -1,6 +1,8 @@
 // Minimal Mailgun sender (HTTP API, no SDK). Ported from rkpm — reads
 // process.env directly instead of a dedicated env module.
 
+import { CONTACT_EMAIL } from "@/lib/site";
+
 interface SendMailParams {
   to: string;
   bcc?: string;
@@ -32,6 +34,10 @@ export async function sendMail({
 
   const form = new URLSearchParams();
   form.set("from", process.env.MAILGUN_FROM!);
+  // MAILGUN_FROM is on the mg.* sending subdomain, which is DNS-verified for
+  // sending only — it does not receive. Without this header a customer hitting
+  // reply on their order confirmation mails into a black hole.
+  form.set("h:Reply-To", CONTACT_EMAIL);
   form.set("to", to);
   if (bcc) form.set("bcc", bcc);
   form.set("subject", subject);
