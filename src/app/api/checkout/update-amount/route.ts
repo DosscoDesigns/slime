@@ -5,6 +5,7 @@ import {
   computeOrderTotals,
   type CartLineInput,
 } from "@/lib/pricing";
+import { logError, errorContext } from "@/lib/logger";
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(totals);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("update-amount error:", message);
+    logError("update-amount failed", errorContext(error));
     return NextResponse.json(
       { error: `Could not update amount: ${message}` },
       { status: 500 }

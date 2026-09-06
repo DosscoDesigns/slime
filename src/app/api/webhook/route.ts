@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { sendMail } from "@/lib/mailgun";
 import { renderOrderEmail } from "@/lib/order-email";
+import { logError, logInfo, logWarn, errorContext } from "@/lib/logger";
 
 // Stripe signature verification needs the exact raw request bytes, so this
 // route reads request.text() rather than parsed JSON. Run on the Node
@@ -55,10 +56,10 @@ async function resolveCharge(
     });
     return found.data[0] ?? null;
   } catch (err) {
-    console.error(
-      `could not resolve charge for ${pi.id}:`,
-      err instanceof Error ? err.message : err
-    );
+    logError("could not resolve charge", {
+      payment_intent: pi.id,
+      ...errorContext(err),
+    });
     return null;
   }
 }
@@ -66,7 +67,7 @@ async function resolveCharge(
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error("STRIPE_WEBHOOK_SECRET is not set");
+    logError("STRIPE_WEBHOOK_SECRET is not set — webhook cannot verify events");
     return NextResponse.json({ error: "webhook not configured" }, { status: 500 });
   }
 
@@ -87,10 +88,7 @@ export async function POST(request: NextRequest) {
     // is the safe choice on Vercel.
     event = await stripe.webhooks.constructEventAsync(body, sig, webhookSecret);
   } catch (err) {
-    console.warn(
-      "stripe signature verification failed:",
-      err instanceof Error ? err.message : err
-    );
+    logWarn("stripe signature verification failed", errorContext(err));
     return NextResponse.json({ error: "invalid signature" }, { status: 400 });
   }
 
@@ -112,8 +110,9 @@ export async function POST(request: NextRequest) {
   const notificationEmail =
     pi.metadata.notification_email || process.env.ORDER_NOTIFICATION_EMAIL;
   if (!notificationEmail) {
-    console.error(
-      `ORDER_NOTIFICATION_EMAIL unset and no notification_email in PI metadata (${pi.id}) — order NOT emailed to anyone`
+    logError(
+      "ORDER_NOTIFICATION_EMAIL unset and no notification_email in PI metadata — order NOT emailed to anyone",
+      { payment_intent: pi.id, amount: pi.amount }
     );
     return NextResponse.json({ received: true, action: "no_recipient" });
   }
@@ -141,10 +140,15 @@ export async function POST(request: NextRequest) {
       html,
     });
   } catch (err) {
-    console.error(
-      `mailgun send failed (${pi.id}):`,
-      err instanceof Error ? err.message : err
-    );
+    // Awaited: this path returns immediately and the response ends the
+    // invocation, so the log has to be in flight before we return.
+    await logError("mailgun send failed — order confirmation NOT delivered", {
+      payment_intent: pi.id,
+      amount: pi.amount,
+      to: notificationEmail,
+      customer_email: customerEmail,
+      ...errorContext(err),
+    });
     // 500 → Stripe retries. PI flag NOT set, so the retry re-attempts send.
     return NextResponse.json({ error: "mail send failed" }, { status: 500 });
   }
@@ -159,11 +163,18 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err) {
-    console.warn(
-      `failed to flag PI as notified (${pi.id}):`,
-      err instanceof Error ? err.message : err
-    );
+    logWarn("failed to flag PI as notified — a duplicate email is possible", {
+      payment_intent: pi.id,
+      ...errorContext(err),
+    });
   }
+
+  logInfo("order confirmation sent", {
+    payment_intent: pi.id,
+    amount: pi.amount,
+    to: notificationEmail,
+    customer_email: customerEmail,
+  });
 
   return NextResponse.json({ received: true, action: "notified" });
 }

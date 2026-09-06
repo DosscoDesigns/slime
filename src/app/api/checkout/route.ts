@@ -5,6 +5,7 @@ import {
   computeOrderTotals,
   type CartLineInput,
 } from "@/lib/pricing";
+import { logError, logWarn, errorContext } from "@/lib/logger";
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -27,6 +28,13 @@ export async function POST(request: NextRequest) {
     try {
       priced = priceCart(cartItems);
     } catch (err) {
+      // Usually a retired add-on left in a returning customer's localStorage
+      // cart. It presents to them as a checkout that simply refuses, so it
+      // needs to be visible rather than a silent 400.
+      logWarn("cart rejected at pricing", {
+        items: cartItems,
+        ...errorContext(err),
+      });
       return NextResponse.json(
         { error: err instanceof Error ? err.message : "Invalid cart" },
         { status: 400 }
@@ -62,7 +70,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("Stripe checkout error:", message);
+    logError("checkout intent creation failed", errorContext(error));
     return NextResponse.json(
       { error: `Checkout failed: ${message}` },
       { status: 500 }
