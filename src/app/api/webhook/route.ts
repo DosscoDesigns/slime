@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { sendMail } from "@/lib/mailgun";
-import { renderOrderEmail } from "@/lib/order-email";
+import { renderCustomerReceipt, renderOpsNotice } from "@/lib/order-email";
 import { logError, logInfo, logWarn, errorContext } from "@/lib/logger";
 import { resolveCharge } from "@/lib/stripe-charge";
 
@@ -54,9 +54,19 @@ export async function POST(request: NextRequest) {
 
   const pi = event.data.object as Stripe.PaymentIntent;
 
-  // Idempotency: a flag written back to PI metadata short-circuits retries
-  // and duplicate deliveries.
-  if (pi.metadata.order_email_sent_at) {
+  // Idempotency: flags written back to PI metadata short-circuit retries and
+  // duplicate deliveries. The two mails are tracked SEPARATELY so that a
+  // failure on one cannot cause the other to be sent twice on Stripe's retry.
+  //
+  // `order_email_sent_at` is the legacy flag from when both parties shared a
+  // single BCC'd email; an order bearing it has already been fully notified,
+  // so it counts for both.
+  const legacyCombinedSent = Boolean(pi.metadata.order_email_sent_at);
+  const opsAlreadySent = legacyCombinedSent || Boolean(pi.metadata.ops_email_sent_at);
+  const customerAlreadySent =
+    legacyCombinedSent || Boolean(pi.metadata.customer_email_sent_at);
+
+  if (opsAlreadySent && customerAlreadySent) {
     return NextResponse.json({ received: true, action: "skipped_duplicate" });
   }
 
@@ -75,61 +85,93 @@ export async function POST(request: NextRequest) {
 
   const charge = await resolveCharge(stripe, pi);
 
-  const { subject, text, html } = renderOrderEmail({ pi, charge });
-
-  // BCC the customer so they get the same confirmation without exposing the
-  // owner address in the To: header. Email comes from the LinkAuthentication
-  // element (billing_details) — we do NOT set receipt_email, so Stripe does
-  // not send a competing auto-receipt.
+  // The buyer's address comes from the LinkAuthentication element
+  // (billing_details). We never set receipt_email, so Stripe sends no
+  // competing auto-receipt — which makes our customer mail the only record
+  // they get.
   const customerEmail =
     pi.receipt_email ??
     charge?.receipt_email ??
     charge?.billing_details?.email ??
     undefined;
 
-  try {
-    await sendMail({
-      to: notificationEmail,
-      bcc: customerEmail ?? undefined,
-      subject,
-      text,
-      html,
-    });
-  } catch (err) {
-    // Awaited: this path returns immediately and the response ends the
-    // invocation, so the log has to be in flight before we return.
-    await logError("mailgun send failed — order confirmation NOT delivered", {
-      payment_intent: pi.id,
-      amount: pi.amount,
-      to: notificationEmail,
-      customer_email: customerEmail,
-      ...errorContext(err),
-    });
-    // 500 → Stripe retries. PI flag NOT set, so the retry re-attempts send.
-    return NextResponse.json({ error: "mail send failed" }, { status: 500 });
+  // Two SEPARATE messages, not one with a BCC. A BCC'd send gives every
+  // recipient the same Message-ID, so a mail client dedupes them and an owner
+  // who is also the buyer sees only one copy — and either way the customer
+  // received an internal fulfillment ticket written for the shop.
+  const sentNow: Record<string, string> = {};
+  const failures: string[] = [];
+
+  if (!opsAlreadySent) {
+    const mail = renderOpsNotice({ pi, charge });
+    try {
+      await sendMail({ to: notificationEmail, ...mail });
+      sentNow.ops_email_sent_at = new Date().toISOString();
+    } catch (err) {
+      failures.push("ops");
+      await logError("mailgun send failed — ops order notice NOT delivered", {
+        payment_intent: pi.id,
+        amount: pi.amount,
+        to: notificationEmail,
+        ...errorContext(err),
+      });
+    }
   }
 
-  // Flag the PI so a duplicate delivery doesn't double-send. Non-fatal on
-  // failure — worst case is a second email, preferable to none.
-  try {
-    await stripe.paymentIntents.update(pi.id, {
-      metadata: {
-        ...pi.metadata,
-        order_email_sent_at: new Date().toISOString(),
-      },
-    });
-  } catch (err) {
-    logWarn("failed to flag PI as notified — a duplicate email is possible", {
-      payment_intent: pi.id,
-      ...errorContext(err),
-    });
+  if (!customerAlreadySent) {
+    if (!customerEmail) {
+      // Nothing to retry against, so this must not 500 into a retry loop.
+      logWarn("no customer email on the order — receipt NOT sent", {
+        payment_intent: pi.id,
+        amount: pi.amount,
+      });
+    } else {
+      const mail = renderCustomerReceipt({ pi, charge });
+      try {
+        await sendMail({ to: customerEmail, ...mail });
+        sentNow.customer_email_sent_at = new Date().toISOString();
+      } catch (err) {
+        failures.push("customer");
+        await logError("mailgun send failed — customer receipt NOT delivered", {
+          payment_intent: pi.id,
+          amount: pi.amount,
+          customer_email: customerEmail,
+          ...errorContext(err),
+        });
+      }
+    }
   }
 
-  logInfo("order confirmation sent", {
+  // Persist whatever actually sent BEFORE reporting failure, so Stripe's
+  // retry re-attempts only the message that did not go out.
+  if (Object.keys(sentNow).length > 0) {
+    try {
+      await stripe.paymentIntents.update(pi.id, {
+        metadata: { ...pi.metadata, ...sentNow },
+      });
+    } catch (err) {
+      logWarn("failed to flag PI as notified — a duplicate email is possible", {
+        payment_intent: pi.id,
+        ...errorContext(err),
+      });
+    }
+  }
+
+  if (failures.length > 0) {
+    // 500 → Stripe retries; the flags above keep the retry from re-sending
+    // whichever message already succeeded.
+    return NextResponse.json(
+      { error: `mail send failed: ${failures.join(", ")}` },
+      { status: 500 }
+    );
+  }
+
+  logInfo("order emails sent", {
     payment_intent: pi.id,
     amount: pi.amount,
     to: notificationEmail,
     customer_email: customerEmail,
+    sent: Object.keys(sentNow).join(",") || "none",
   });
 
   return NextResponse.json({ received: true, action: "notified" });
