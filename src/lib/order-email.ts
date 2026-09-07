@@ -255,7 +255,6 @@ export function renderCustomerReceipt({ pi, charge }: RenderArgs): RenderedEmail
   const shipping = Number(pi.metadata.shipping_cents || 0);
   const tax = Number(pi.metadata.tax_cents || 0);
   const total = pi.amount;
-  const totalItems = lines.reduce((s, l) => s + l.q, 0);
 
   const firstName = (
     charge?.shipping?.name ??
