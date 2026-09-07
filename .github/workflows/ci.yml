@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on PRs only. Every commit on main deploys, so a
+# cancelled run there would leave a deployed commit with no CI result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # Cheapest-first: lint and types fail in seconds, the build takes minutes.
+  # Splitting them means a red X tells you which kind of thing broke.
+  quality:
+    name: lint · typecheck · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      # Deliberately separate from the build: a Next build can succeed with
+      # type errors present, and the point is to see them.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # No real keys in CI. The build only needs these to exist; nothing here
+      # talks to Stripe, Mailgun or BetterStack.
+      - name: Build
+        run: pnpm build
+        env:
+          STRIPE_SECRET_KEY: sk_test_ci_placeholder
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci_placeholder
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # gitleaks needs history to scan commits, not just the tree.
+          fetch-depth: 0
+
+      # Deliberately the binary, not gitleaks/gitleaks-action@v2. That action
+      # requires a GITLEAKS_LICENSE for repos owned by an organization, and
+      # DosscoDesigns is one. The licence is FREE — a signup form that emails
+      # a key — so this is not a cost decision: it avoids a signup, a secret
+      # to store, and a key that can expire out from under CI. The CLI is the
+      # same scanner and needs none of that.
+      - name: Install gitleaks
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+        env:
+          GITLEAKS_VERSION: 8.30.1
+
+      - name: Scan history for secrets
+        run: gitleaks detect --source . --redact --verbose --exit-code 1

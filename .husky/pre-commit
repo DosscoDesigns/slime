@@ -1,0 +1,2 @@
+# Staged files only — keep this fast enough that nobody reaches for --no-verify.
+npx lint-staged
