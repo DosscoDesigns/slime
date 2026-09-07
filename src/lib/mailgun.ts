@@ -3,9 +3,13 @@
 
 import { CONTACT_EMAIL } from "@/lib/site";
 
+// No bcc. Order mail goes out as two separate messages (ops notice, customer
+// receipt) precisely because a BCC'd send gives every recipient the same
+// Message-ID, which mail clients dedupe — an owner who is also the buyer sees
+// one copy, and the customer receives the shop's internal ticket. Don't add
+// it back for that purpose.
 interface SendMailParams {
   to: string;
-  bcc?: string;
   subject: string;
   text: string;
   html: string;
@@ -25,7 +29,6 @@ export function assertMailgunConfigured(): void {
 
 export async function sendMail({
   to,
-  bcc,
   subject,
   text,
   html,
@@ -39,7 +42,6 @@ export async function sendMail({
   // reply on their order confirmation mails into a black hole.
   form.set("h:Reply-To", CONTACT_EMAIL);
   form.set("to", to);
-  if (bcc) form.set("bcc", bcc);
   form.set("subject", subject);
   form.set("text", text);
   form.set("html", html);
