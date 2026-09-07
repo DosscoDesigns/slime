@@ -3,6 +3,11 @@
 # commit in this fleet originates on dd-mini, which makes a local pre-push a
 # genuine gate rather than advice.
 #
-# Typecheck before tests: it fails in seconds and catches more.
+# All three gates (lint-staged, this hook, CI) must agree. When they don't,
+# "is this enforced?" depends on how you happened to reach origin — which is
+# how a dead binding reached main tonight with every check green.
+#
+# Typecheck first: it fails in seconds and catches more.
 pnpm typecheck
+pnpm lint
 pnpm test
