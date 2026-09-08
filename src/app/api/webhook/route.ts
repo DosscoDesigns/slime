@@ -4,6 +4,7 @@ import { sendMail } from "@/lib/mailgun";
 import { renderCustomerReceipt, renderOpsNotice } from "@/lib/order-email";
 import { logError, logInfo, logWarn, errorContext } from "@/lib/logger";
 import { resolveCharge } from "@/lib/stripe-charge";
+import { pendingNotifications } from "@/lib/order-notifications";
 
 // Stripe signature verification needs the exact raw request bytes, so this
 // route reads request.text() rather than parsed JSON. Run on the Node
@@ -52,7 +53,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, action: "ignored" });
   }
 
-  const pi = event.data.object as Stripe.PaymentIntent;
+  const eventPi = event.data.object as Stripe.PaymentIntent;
+
+  // RE-FETCH, do not trust event.data.object.
+  //
+  // The event payload is a SNAPSHOT of the PaymentIntent as it was when the
+  // event fired — which is necessarily before we write any "already sent"
+  // flag to its metadata. Stripe replays that same frozen payload on every
+  // retry, so an idempotency check against the snapshot can never see its own
+  // flag and would re-send on every delivery. Reading current state is the
+  // whole point of the check.
+  //
+  // On a retrieve failure, fall back to the snapshot and carry on: sending a
+  // duplicate is a better failure than never sending a customer their receipt.
+  let pi = eventPi;
+  try {
+    pi = await stripe.paymentIntents.retrieve(eventPi.id);
+  } catch (err) {
+    logWarn("could not re-fetch PaymentIntent — idempotency may not hold", {
+      payment_intent: eventPi.id,
+      ...errorContext(err),
+    });
+  }
 
   // Idempotency: flags written back to PI metadata short-circuit retries and
   // duplicate deliveries. The two mails are tracked SEPARATELY so that a
@@ -61,10 +83,9 @@ export async function POST(request: NextRequest) {
   // `order_email_sent_at` is the legacy flag from when both parties shared a
   // single BCC'd email; an order bearing it has already been fully notified,
   // so it counts for both.
-  const legacyCombinedSent = Boolean(pi.metadata.order_email_sent_at);
-  const opsAlreadySent = legacyCombinedSent || Boolean(pi.metadata.ops_email_sent_at);
-  const customerAlreadySent =
-    legacyCombinedSent || Boolean(pi.metadata.customer_email_sent_at);
+  const pending = pendingNotifications(pi.metadata);
+  const opsAlreadySent = !pending.ops;
+  const customerAlreadySent = !pending.customer;
 
   if (opsAlreadySent && customerAlreadySent) {
     return NextResponse.json({ received: true, action: "skipped_duplicate" });
