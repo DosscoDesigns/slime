@@ -51,14 +51,25 @@ export function assertPrintWorkerConfigured(): void {
 }
 
 /**
- * The worker's own worst-case time before it gives up: 3 attempts capped at
- * 8s each, 600ms apart (see sendZPL in ~/dev/dd/infra/print-worker/server.js).
+ * A COPY of the worker's worst case, for when we cannot ask it: 3 attempts
+ * capped at 8s each, 600ms apart (sendZPL in ~/dev/dd/infra/print-worker).
  * It retries because the Zebras WiFi-sleep and refuse the first connect.
+ *
+ * This number lives on the wrong side of a boundary and we know it. The retry
+ * loop is in another repo, owned by another session, and nothing here can see
+ * it change — if `attempts` goes 3 → 4 the real budget becomes 33.6s and this
+ * constant is silently wrong. So treat it as a floor for the offline case,
+ * never as the truth: the live value comes from fetchWorkerRetryBudgetMs().
+ *
+ * There is deliberately NO unit test pinning this to 25_200. Such a test only
+ * asserts that we transcribed someone else's constant correctly, which never
+ * fails and never helps — and would sit green through exactly the change that
+ * reopens the duplicate-label window.
  */
-export const WORKER_RETRY_BUDGET_MS = 3 * 8_000 + 2 * 600; // 25.2s
+export const FALLBACK_WORKER_RETRY_BUDGET_MS = 3 * 8_000 + 2 * 600; // 25.2s
 
 /**
- * Deliberately LONGER than WORKER_RETRY_BUDGET_MS, and that ordering is the
+ * Deliberately LONGER than the worker's retry budget, and that ordering is the
  * whole point — do not "tidy" this back down to a rounder number.
  *
  * Aborting our fetch does not abort the worker: its `nc` child keeps running
@@ -66,8 +77,66 @@ export const WORKER_RETRY_BUDGET_MS = 3 * 8_000 + 2 * 600; // 25.2s
  * caller the print failed while a label is in flight, the admin retries, and
  * the customer's box gets two labels. Whoever gives up first must be the party
  * that cannot cause a side effect — here that is the worker, not us.
+ *
+ * Verify this against the LIVE budget with assertTimeoutCoversWorker(), not
+ * against FALLBACK_WORKER_RETRY_BUDGET_MS. Comparing two of our own constants
+ * proves nothing about the worker.
  */
 export const DEFAULT_PRINT_TIMEOUT_MS = 30_000;
+
+/**
+ * Read the worker's own declared retry budget from its open /health endpoint.
+ *
+ * Returns null when the worker cannot be reached OR when it does not publish
+ * `retryBudgetMs` — older builds return a bare `{"status":"ok"}`, so absence
+ * is a supported answer, not an error. Callers fall back to
+ * FALLBACK_WORKER_RETRY_BUDGET_MS.
+ *
+ * /health is unauthenticated by contract, so this needs no token.
+ */
+export async function fetchWorkerRetryBudgetMs(): Promise<number | null> {
+  assertServerSide();
+  if (!process.env.PRINT_WORKER_URL) return null;
+
+  const base = process.env.PRINT_WORKER_URL.replace(/\/$/, "");
+  try {
+    const res = await fetch(`${base}/health`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { retryBudgetMs?: unknown };
+    return typeof body.retryBudgetMs === "number" && body.retryBudgetMs > 0
+      ? body.retryBudgetMs
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check our timeout still outlives the worker's ACTUAL budget.
+ *
+ * This is the guard the unit tests cannot be: it reads the live value rather
+ * than a constant we copied. Deliberately NOT called from printZpl() — that
+ * would put a second round-trip in front of every label for a value that
+ * changes about never. Call it at startup, from an ops check, or from the
+ * post-deploy acceptance gate.
+ *
+ * Silent when the worker does not publish a budget; there is nothing to check
+ * and failing closed would ground printing over a missing diagnostic field.
+ */
+export async function assertTimeoutCoversWorker(
+  timeoutMs: number = DEFAULT_PRINT_TIMEOUT_MS
+): Promise<void> {
+  const live = await fetchWorkerRetryBudgetMs();
+  if (live === null) return;
+  if (timeoutMs <= live) {
+    throw new PrintWorkerError(
+      `print timeout ${timeoutMs}ms does not cover the worker's retry budget of ${live}ms — ` +
+        `a print can succeed after we report failure, which duplicates labels. Raise DEFAULT_PRINT_TIMEOUT_MS above ${live}.`
+    );
+  }
+}
 
 interface PrintZplParams {
   zpl: string;

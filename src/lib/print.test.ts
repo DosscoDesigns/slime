@@ -4,7 +4,9 @@ import {
   assertPrintWorkerConfigured,
   PrintWorkerError,
   DEFAULT_PRINT_TIMEOUT_MS,
-  WORKER_RETRY_BUDGET_MS,
+  FALLBACK_WORKER_RETRY_BUDGET_MS,
+  fetchWorkerRetryBudgetMs,
+  assertTimeoutCoversWorker,
 } from "./print";
 
 /**
@@ -120,17 +122,22 @@ describe("printZpl", () => {
  * told it failed, and a retry puts two labels on one box. Same class of bug as
  * reading an idempotency flag off a stale snapshot: the action completes
  * outside the window being watched.
+ *
+ * NOTE what is deliberately NOT tested here: that
+ * FALLBACK_WORKER_RETRY_BUDGET_MS equals 25,200. That constant is a copy of a
+ * value owned by another repo, so such a test would only assert our own
+ * transcription — it passes forever, including through the exact change (the
+ * worker raising `attempts` 3 → 4) that reopens the duplicate-label window.
+ * The real check reads the live value; see assertTimeoutCoversWorker.
  */
 describe("timeout budget", () => {
-  it("outlives the worker's worst-case retry budget", () => {
-    expect(DEFAULT_PRINT_TIMEOUT_MS).toBeGreaterThan(WORKER_RETRY_BUDGET_MS);
+  it("outlives the worker's budget as we last knew it", () => {
+    expect(DEFAULT_PRINT_TIMEOUT_MS).toBeGreaterThan(
+      FALLBACK_WORKER_RETRY_BUDGET_MS
+    );
   });
 
-  it("pins the worker's budget at 3 attempts of 8s, 600ms apart", () => {
-    expect(WORKER_RETRY_BUDGET_MS).toBe(25_200);
-  });
-
-  it("passes the default timeout to the request", async () => {
+  it("passes an abort signal on the request", async () => {
     const spy = stubFetch(new Response("{}", { status: 200 }));
     await printZpl({ zpl: "^XA^XZ", printer: "4x6" });
     expect(spy.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
@@ -152,5 +159,66 @@ describe("timeout budget", () => {
     await expect(printZpl({ zpl: "^XA^XZ", printer: "4x6" })).rejects.toThrow(
       /unreachable/
     );
+  });
+});
+
+describe("fetchWorkerRetryBudgetMs", () => {
+  it("reads the budget the worker publishes on /health", async () => {
+    const spy = stubFetch(
+      new Response(JSON.stringify({ status: "ok", retryBudgetMs: 33_600 }), {
+        status: 200,
+      })
+    );
+    await expect(fetchWorkerRetryBudgetMs()).resolves.toBe(33_600);
+    expect(spy.mock.calls[0][0]).toBe(`${URL_}/health`);
+  });
+
+  // /health is unauthenticated by contract; sending the token would leak it to
+  // an endpoint that does not need it.
+  it("does not send the print token to /health", async () => {
+    const spy = stubFetch(
+      new Response(JSON.stringify({ retryBudgetMs: 25_200 }), { status: 200 })
+    );
+    await fetchWorkerRetryBudgetMs();
+    const init = spy.mock.calls[0][1] ?? {};
+    expect(JSON.stringify(init)).not.toContain(TOKEN);
+  });
+
+  // Older workers return a bare {"status":"ok"} — absence is a supported
+  // answer, not a failure.
+  it("returns null when the worker publishes no budget", async () => {
+    stubFetch(new Response(JSON.stringify({ status: "ok" }), { status: 200 }));
+    await expect(fetchWorkerRetryBudgetMs()).resolves.toBeNull();
+  });
+
+  it("returns null rather than throwing when the worker is unreachable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+    await expect(fetchWorkerRetryBudgetMs()).resolves.toBeNull();
+  });
+});
+
+describe("assertTimeoutCoversWorker", () => {
+  // The case the unit tests cannot catch on their own: the worker raises its
+  // own retry count and our default is quietly short again.
+  it("throws when the live budget outgrew our timeout", async () => {
+    stubFetch(
+      new Response(JSON.stringify({ retryBudgetMs: 33_600 }), { status: 200 })
+    );
+    await expect(assertTimeoutCoversWorker()).rejects.toThrow(
+      /does not cover the worker's retry budget of 33600ms/
+    );
+  });
+
+  it("passes when our timeout still covers the live budget", async () => {
+    stubFetch(
+      new Response(JSON.stringify({ retryBudgetMs: 25_200 }), { status: 200 })
+    );
+    await expect(assertTimeoutCoversWorker()).resolves.toBeUndefined();
+  });
+
+  // Failing closed here would ground printing over a missing diagnostic field.
+  it("stays silent when the worker publishes no budget", async () => {
+    stubFetch(new Response(JSON.stringify({ status: "ok" }), { status: 200 }));
+    await expect(assertTimeoutCoversWorker()).resolves.toBeUndefined();
   });
 });
