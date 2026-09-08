@@ -198,14 +198,22 @@ describe("fetchWorkerRetryBudgetMs", () => {
 });
 
 describe("assertTimeoutCoversWorker", () => {
-  // The case the unit tests cannot catch on their own: the worker raises its
-  // own retry count and our default is quietly short again.
+  /**
+   * The case the unit tests cannot catch on their own: the worker raises its
+   * own retry count and our default is quietly short again.
+   *
+   * 99_000 is deliberately synthetic. An earlier version used 33_600 as "the
+   * budget if the worker went to 4 attempts", which was wrong — the delays are
+   * n-1, not n, so four attempts is 33,800 — and a plausible-looking figure in
+   * a test reads as measured to the next person. The subject here is the
+   * comparison, not the number, so the number should be obviously invented.
+   */
   it("throws when the live budget outgrew our timeout", async () => {
     stubFetch(
-      new Response(JSON.stringify({ retryBudgetMs: 33_600 }), { status: 200 })
+      new Response(JSON.stringify({ retryBudgetMs: 99_000 }), { status: 200 })
     );
     await expect(assertTimeoutCoversWorker()).rejects.toThrow(
-      /does not cover the worker's retry budget of 33600ms/
+      /does not cover the worker's retry budget of 99000ms/
     );
   });
 
