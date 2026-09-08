@@ -162,14 +162,20 @@ describe("timeout budget", () => {
   });
 });
 
+/**
+ * Budget values in these tests are deliberately synthetic (12_345, 99_000).
+ * They are echoed payloads, not measurements — using a realistic-looking figure
+ * would invite the next reader to take it as what the worker actually reports,
+ * which is how a stale copy of someone else's constant gets believed.
+ */
 describe("fetchWorkerRetryBudgetMs", () => {
   it("reads the budget the worker publishes on /health", async () => {
     const spy = stubFetch(
-      new Response(JSON.stringify({ status: "ok", retryBudgetMs: 33_600 }), {
+      new Response(JSON.stringify({ status: "ok", retryBudgetMs: 12_345 }), {
         status: 200,
       })
     );
-    await expect(fetchWorkerRetryBudgetMs()).resolves.toBe(33_600);
+    await expect(fetchWorkerRetryBudgetMs()).resolves.toBe(12_345);
     expect(spy.mock.calls[0][0]).toBe(`${URL_}/health`);
   });
 
@@ -177,7 +183,7 @@ describe("fetchWorkerRetryBudgetMs", () => {
   // an endpoint that does not need it.
   it("does not send the print token to /health", async () => {
     const spy = stubFetch(
-      new Response(JSON.stringify({ retryBudgetMs: 25_200 }), { status: 200 })
+      new Response(JSON.stringify({ retryBudgetMs: 12_345 }), { status: 200 })
     );
     await fetchWorkerRetryBudgetMs();
     const init = spy.mock.calls[0][1] ?? {};
@@ -219,7 +225,7 @@ describe("assertTimeoutCoversWorker", () => {
 
   it("passes when our timeout still covers the live budget", async () => {
     stubFetch(
-      new Response(JSON.stringify({ retryBudgetMs: 25_200 }), { status: 200 })
+      new Response(JSON.stringify({ retryBudgetMs: 12_345 }), { status: 200 })
     );
     await expect(assertTimeoutCoversWorker()).resolves.toBeUndefined();
   });
