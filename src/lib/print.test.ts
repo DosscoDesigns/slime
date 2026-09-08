@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { printZpl, assertPrintWorkerConfigured, PrintWorkerError } from "./print";
+import {
+  printZpl,
+  assertPrintWorkerConfigured,
+  PrintWorkerError,
+  DEFAULT_PRINT_TIMEOUT_MS,
+  WORKER_RETRY_BUDGET_MS,
+} from "./print";
 
 /**
  * The token in these tests is the whole point of the module: it must be sent
@@ -101,6 +107,47 @@ describe("printZpl", () => {
   });
 
   it("turns an unreachable worker into a clear error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+    await expect(printZpl({ zpl: "^XA^XZ", printer: "4x6" })).rejects.toThrow(
+      /unreachable/
+    );
+  });
+});
+
+/**
+ * The client must outlive the worker's own retry budget. If it gives up first
+ * its abort does NOT stop the worker — the label still prints, the caller is
+ * told it failed, and a retry puts two labels on one box. Same class of bug as
+ * reading an idempotency flag off a stale snapshot: the action completes
+ * outside the window being watched.
+ */
+describe("timeout budget", () => {
+  it("outlives the worker's worst-case retry budget", () => {
+    expect(DEFAULT_PRINT_TIMEOUT_MS).toBeGreaterThan(WORKER_RETRY_BUDGET_MS);
+  });
+
+  it("pins the worker's budget at 3 attempts of 8s, 600ms apart", () => {
+    expect(WORKER_RETRY_BUDGET_MS).toBe(25_200);
+  });
+
+  it("passes the default timeout to the request", async () => {
+    const spy = stubFetch(new Response("{}", { status: 200 }));
+    await printZpl({ zpl: "^XA^XZ", printer: "4x6" });
+    expect(spy.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  });
+
+  // A timeout is NOT the same as an unreachable host: the job was accepted, so
+  // a label may exist. Saying "retry" here is how a box gets two labels.
+  it("warns that a timed-out print may still have printed", async () => {
+    const timeoutErr = new Error("The operation was aborted due to timeout");
+    timeoutErr.name = "TimeoutError";
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(timeoutErr));
+    await expect(printZpl({ zpl: "^XA^XZ", printer: "4x6" })).rejects.toThrow(
+      /MAY have printed/
+    );
+  });
+
+  it("still reports a genuine connect failure as unreachable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
     await expect(printZpl({ zpl: "^XA^XZ", printer: "4x6" })).rejects.toThrow(
       /unreachable/
