@@ -25,12 +25,15 @@
 export type ZebraPrinter = "4x2" | "4x6";
 
 export class PrintWorkerError extends Error {
-  constructor(
-    message: string,
-    readonly status?: number
-  ) {
+  // Declared and assigned rather than a constructor parameter property, which
+  // is TS-only syntax that Node's strip-only type stripping cannot run — these
+  // modules are loaded directly by node in the fulfilment scripts.
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
     super(message);
     this.name = "PrintWorkerError";
+    this.status = status;
   }
 }
 
@@ -142,7 +145,7 @@ interface PrintZplParams {
   zpl: string;
   printer: ZebraPrinter;
   /**
-   * Give up after this long. Anything below WORKER_RETRY_BUDGET_MS reopens the
+   * Give up after this long. Anything below the worker's live budget reopens the
    * duplicate-label window described on DEFAULT_PRINT_TIMEOUT_MS.
    */
   timeoutMs?: number;
