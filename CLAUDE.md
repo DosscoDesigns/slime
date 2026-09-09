@@ -147,7 +147,10 @@ survives blockers, so it is the honest traffic denominator. The GA4 number is th
   thing on `/success`.
 - **Measurement Protocol answers 204 to anything**, valid or garbage. Set
   `GA_DEBUG_MP=1` to route to the validating endpoint when changing that code;
-  it validates *without recording*, so leave it unset in production.
+  it validates *without recording*, so leave it unset in production. **It
+  validates the payload only — a bogus `api_secret` returns the same empty
+  `validationMessages` as a real one** (verified 2026-09-09). The only proof a
+  credential works is a real event showing up in GA4 Realtime.
   `session_id` + `engagement_time_msec` are effectively required or events land
   in DebugView and never in a standard report.
 - **`NEXT_PUBLIC_*` is baked in at build time** — setting a measurement id in

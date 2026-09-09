@@ -20,6 +20,12 @@
  *  1. THE ENDPOINT ALWAYS RETURNS 204. A completely malformed payload is
  *     accepted silently and simply never appears in a report. There is no
  *     success signal to check, which is why GA_DEBUG_MP exists below.
+ *     AND THE DEBUG ENDPOINT ONLY CHECKS THE PAYLOAD, NOT THE CREDENTIAL —
+ *     verified 2026-09-09 by sending the same body with a deliberately bogus
+ *     api_secret and getting the identical empty `validationMessages` back.
+ *     So a green debug response means "this JSON is well-formed", never "these
+ *     credentials work". The only way to prove the secret is to send a real
+ *     event and look for it in GA4's Realtime report.
  *  2. `session_id` and `engagement_time_msec` are effectively REQUIRED. Omit
  *     them and the event lands in Realtime/DebugView but never in the standard
  *     reports — the single most common reason "MP doesn't work".
@@ -40,9 +46,9 @@ const API_SECRET = process.env.GA_API_SECRET;
 
 /**
  * Route through the validating endpoint, which DOES return a body describing
- * what is wrong with the payload. Set GA_DEBUG_MP=1 temporarily when a change
- * to this file needs proving; leave it unset in production, because the debug
- * endpoint validates without recording.
+ * what is wrong with the PAYLOAD (not the credentials — see footgun 1). Set
+ * GA_DEBUG_MP=1 temporarily when a change to this file needs proving; leave it
+ * unset in production, because the debug endpoint validates without recording.
  */
 const DEBUG = process.env.GA_DEBUG_MP === "1";
 
