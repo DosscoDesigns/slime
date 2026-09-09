@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type Stripe from "stripe";
-import { renderCustomerReceipt, renderOpsNotice } from "./order-email";
+import {
+  detectCarrier,
+  renderCustomerReceipt,
+  renderOpsNotice,
+  renderShippingNotice,
+} from "./order-email";
 import { CONTACT_EMAIL } from "./site";
 
 /**
@@ -129,5 +134,84 @@ describe("ops notice", () => {
     expect(text).toContain(CUSTOMER_EMAIL);
     expect(text).toContain(CUSTOMER_PHONE);
     expect(text).toContain("1 Main St");
+  });
+});
+
+describe("detectCarrier", () => {
+  it("reads the 1Z prefix as UPS", () => {
+    expect(detectCarrier("1Z999AA10123456784")).toBe("ups");
+  });
+
+  it("reads a 22-digit IMpb number as USPS", () => {
+    expect(detectCarrier("9334611043900013172773")).toBe("usps");
+  });
+
+  it("reads a 12-digit number as FedEx", () => {
+    expect(detectCarrier("123456789012")).toBe("fedex");
+  });
+
+  it("tolerates spaces in a pasted tracking number", () => {
+    expect(detectCarrier("9334 6110 4390 0013 1727 73")).toBe("usps");
+  });
+
+  // USPS is what we actually ship, so an unrecognised shape guessing USPS is
+  // deliberate — a plausible link beats no link. Pin it so a later "tighten
+  // the regexes" change can't turn it into a throw.
+  it("falls back to USPS on an unrecognised shape", () => {
+    expect(detectCarrier("XYZ-123")).toBe("usps");
+  });
+});
+
+describe("renderShippingNotice", () => {
+  const TRACKING = "9334611043900013172773";
+
+  it("puts the carrier and tracking number in the subject", () => {
+    const { pi, charge } = fixture();
+    const mail = renderShippingNotice({ pi, charge, tracking: TRACKING });
+    expect(mail.subject).toContain("USPS");
+    expect(mail.subject).toContain(TRACKING);
+  });
+
+  it("links to the carrier's tracking page in both parts", () => {
+    const { pi, charge } = fixture();
+    const mail = renderShippingNotice({ pi, charge, tracking: TRACKING });
+    const url = `https://tools.usps.com/go/TrackConfirmAction?tLabels=${TRACKING}`;
+    expect(mail.text).toContain(url);
+    expect(mail.html).toContain(url);
+  });
+
+  it("honours an explicit carrier over the shape guess", () => {
+    const { pi, charge } = fixture();
+    const mail = renderShippingNotice({
+      pi,
+      charge,
+      tracking: TRACKING,
+      carrier: "ups",
+    });
+    expect(mail.subject).toContain("UPS");
+    expect(mail.html).toContain("ups.com/track");
+  });
+
+  it("lists what is in the box and where it is going", () => {
+    const { pi, charge } = fixture();
+    const mail = renderShippingNotice({ pi, charge, tracking: TRACKING });
+    expect(mail.text).toContain("Backyard Bash — 20G (green)");
+    expect(mail.text).toContain("1 Main St");
+  });
+
+  // The buyer already knows what they paid; the shipping note is about where
+  // the box is. Repeating the money invites "why am I being charged again?".
+  it("does not restate the order total", () => {
+    const { pi, charge } = fixture();
+    const mail = renderShippingNotice({ pi, charge, tracking: TRACKING });
+    expect(mail.text).not.toContain("$29.63");
+    expect(mail.html).not.toContain("$29.63");
+  });
+
+  it("still renders when the charge never resolved", () => {
+    const { pi } = fixture();
+    const mail = renderShippingNotice({ pi, charge: null, tracking: TRACKING });
+    expect(mail.subject).toContain(TRACKING);
+    expect(mail.text).toContain("(not provided)");
   });
 });

@@ -413,3 +413,206 @@ export function renderCustomerReceipt({ pi, charge }: RenderArgs): RenderedEmail
 
   return { subject, text, html };
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Shipping notice
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export type Carrier = "usps" | "ups" | "fedex";
+
+interface CarrierInfo {
+  name: string;
+  trackUrl: (tracking: string) => string;
+}
+
+const CARRIERS: Record<Carrier, CarrierInfo> = {
+  usps: {
+    name: "USPS",
+    trackUrl: (t) =>
+      `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(t)}`,
+  },
+  ups: {
+    name: "UPS",
+    trackUrl: (t) =>
+      `https://www.ups.com/track?tracknum=${encodeURIComponent(t)}`,
+  },
+  fedex: {
+    name: "FedEx",
+    trackUrl: (t) =>
+      `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(t)}`,
+  },
+};
+
+/**
+ * Guess the carrier from the tracking number's shape.
+ *
+ * Only the three carriers we actually ship with. USPS IMpb numbers are 20-22
+ * digits and effectively always start with 9 for domestic retail/commercial
+ * services; UPS is the unmistakable 1Z prefix; FedEx Express/Ground are 12 or
+ * 15 digits. Anything unrecognised falls back to USPS because that is what we
+ * ship, and a wrong-but-plausible tracking link is still better than none —
+ * callers that know the carrier should pass it explicitly rather than rely on
+ * this.
+ */
+export function detectCarrier(tracking: string): Carrier {
+  const t = tracking.replace(/\s+/g, "").toUpperCase();
+  if (t.startsWith("1Z")) return "ups";
+  if (/^\d{20,22}$/.test(t)) return "usps";
+  if (/^\d{12}$|^\d{15}$/.test(t)) return "fedex";
+  return "usps";
+}
+
+interface ShippingNoticeArgs extends RenderArgs {
+  /** Carrier tracking number, as printed on the label. */
+  tracking: string;
+  /** Override the shape-based carrier guess when the caller knows better. */
+  carrier?: Carrier;
+}
+
+/**
+ * The SHIPPING notice — "it's on its way", sent when the label is bought.
+ *
+ * The customer receipt promises "a shipping note with tracking as soon as it's
+ * on its way", so this email is the second half of a promise already made; if
+ * it stops being sent, that receipt is lying. It leads with the tracking
+ * number because that is the only thing the buyer opened the mail for, and it
+ * repeats the order lines so the mail stands alone as the record of what is
+ * actually in the box.
+ */
+export function renderShippingNotice({
+  pi,
+  charge,
+  tracking,
+  carrier,
+}: ShippingNoticeArgs): RenderedEmail {
+  const lines = parseLines(pi.metadata);
+  const c = CARRIERS[carrier ?? detectCarrier(tracking)];
+  const trackUrl = c.trackUrl(tracking);
+
+  const firstName = (
+    charge?.shipping?.name ??
+    charge?.billing_details?.name ??
+    ""
+  )
+    .trim()
+    .split(/\s+/)[0];
+  const shippingAddr = charge?.shipping?.address ?? charge?.billing_details?.address;
+  const shippingName = charge?.shipping?.name ?? charge?.billing_details?.name ?? "";
+
+  const subject = `Your Slime Co order has shipped · ${c.name} ${tracking}`;
+
+  /* ─── Plain-text ─── */
+  const t: string[] = [];
+  t.push(`Good news${firstName ? `, ${firstName}` : ""} — your slime is on its way.`);
+  t.push("");
+  t.push(`  Carrier:  ${c.name}`);
+  t.push(`  Tracking: ${tracking}`);
+  t.push(`  Track it: ${trackUrl}`);
+  t.push("");
+  t.push("Tracking can take a few hours to show movement after the label is");
+  t.push("scanned in — that's normal.");
+  t.push("");
+  t.push("IN THE BOX");
+  for (const l of lines) t.push(`  ${l.n} x${l.q}`);
+  t.push("");
+  t.push("SHIPPING TO");
+  for (const ln of addressLines(shippingAddr, shippingName)) t.push(`  ${ln}`);
+  t.push("");
+  t.push("JUST ADD WATER");
+  t.push("  Dump the powder in a bucket, add water, stir. That's it —");
+  t.push("  full instructions are in the box.");
+  t.push("");
+  t.push("And when you make it, send us pictures! We put the best ones on the");
+  t.push("site.");
+  t.push("");
+  t.push(`Order reference: ${pi.id}`);
+  t.push("");
+  t.push(`Questions? Just reply to this email, or write to ${CONTACT_EMAIL}.`);
+  const text = t.join("\n");
+
+  /* ─── HTML ─── */
+  const lineRows = lines
+    .map(
+      (l) => `
+            <tr>
+              <td style="padding:10px 0;border-bottom:1px solid #eee;font-family:${SANS};color:${INK};font-size:14px;">
+                <strong style="font-weight:600;">${escapeHtml(l.n)}</strong> × ${l.q}
+              </td>
+            </tr>`
+    )
+    .join("");
+
+  const shippingHtml = addressLines(shippingAddr, shippingName)
+    .map(escapeHtml)
+    .join("<br>");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(subject)}</title></head>
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:${SANS};color:${INK};">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:14px;overflow:hidden;">
+        <tr>
+          <td style="background-color:${INK};padding:32px;text-align:center;">
+            <div style="font-family:${SANS};font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-0.02em;">THE SLIME <span style="color:${LIME};">CO</span></div>
+            <div style="font-family:${SANS};font-size:13px;color:#a1a1aa;margin-top:6px;letter-spacing:0.18em;text-transform:uppercase;">On Its Way</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 32px 0 32px;text-align:center;">
+            <div style="font-family:${SANS};font-size:20px;font-weight:700;color:${INK};">Good news${firstName ? `, ${escapeHtml(firstName)}` : ""} — your slime has shipped.</div>
+          </td>
+        </tr>
+        <tr><td style="padding:24px 32px 0 32px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f7fee7;border:1px solid #d9f99d;border-radius:10px;">
+            <tr><td style="padding:20px;text-align:center;">
+              <div style="font-family:${SANS};font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:#4d7c0f;font-weight:700;">${escapeHtml(c.name)} Tracking</div>
+              <div style="font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:17px;color:${INK};margin-top:8px;word-break:break-all;font-weight:600;">${escapeHtml(tracking)}</div>
+              <div style="margin-top:16px;">
+                <a href="${escapeHtml(trackUrl)}" style="display:inline-block;padding:12px 28px;background-color:${LIME};color:${INK};text-decoration:none;font-family:${SANS};font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-weight:700;border-radius:999px;">Track your package</a>
+              </div>
+            </td></tr>
+          </table>
+          <div style="font-family:${SANS};font-size:12px;color:#777;line-height:1.6;margin-top:10px;text-align:center;">
+            Tracking can take a few hours to show movement after the label is scanned in — that's normal.
+          </div>
+        </td></tr>
+        <tr><td style="padding:24px 32px 0 32px;">
+          <div style="font-family:${SANS};font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:${LIME};font-weight:700;margin-bottom:8px;">In the box</div>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top:1px solid #eee;">
+            ${lineRows}
+          </table>
+        </td></tr>
+        <tr><td style="padding:24px 32px 0 32px;">
+          <div style="font-family:${SANS};font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:${LIME};font-weight:700;margin-bottom:8px;">Shipping to</div>
+          <div style="font-family:${SANS};color:${INK};font-size:14px;line-height:1.6;">${shippingHtml}</div>
+        </td></tr>
+        <tr><td style="padding:24px 32px 0 32px;">
+          <div style="font-family:${SANS};font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:${LIME};font-weight:700;margin-bottom:8px;">Just add water</div>
+          <div style="font-family:${SANS};color:#555;font-size:14px;line-height:1.6;">
+            Dump the powder in a bucket, add water, stir. That's it — full instructions are in the box.
+            <br><br>
+            And when you make it, <strong style="color:${INK};">send us pictures!</strong> We put the best ones on the site.
+          </div>
+        </td></tr>
+        <tr><td style="padding:24px 32px 8px 32px;text-align:center;font-family:${SANS};font-size:11px;color:#999;">
+          Order reference: <span style="font-family:'SFMono-Regular',Menlo,Consolas,monospace;">${escapeHtml(pi.id)}</span>
+        </td></tr>
+        <tr><td style="padding:0 32px 32px 32px;text-align:center;font-family:${SANS};font-size:13px;color:#555;">
+          Questions? Just reply to this email, or write to
+          <a href="mailto:${escapeHtml(CONTACT_EMAIL)}" style="color:${INK};text-decoration:underline;">${escapeHtml(CONTACT_EMAIL)}</a>.
+        </td></tr>
+      </table>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;margin-top:12px;">
+        <tr><td style="text-align:center;font-family:${SANS};font-size:11px;color:#999;padding:16px;">
+          The Slime Co &middot; It's about to get messy.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
