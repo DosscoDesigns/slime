@@ -88,9 +88,22 @@ export interface KitTier {
    * recycle a retired SKU for a different product.
    */
   sku: string;
-  /** Primary product image (public/ path). Feeds the product page hero, the
-   *  feed's `g:image_link`, and the Product JSON-LD `image`. */
-  image: string;
+  /**
+   * Primary product image. Feeds the kit page hero, the feed's `g:image_link`
+   * and the Product JSON-LD `image`.
+   *
+   * width/height are the REAL pixel dimensions of `src`, carried so every
+   * render can reserve space — layout shift is a Core Web Vitals input and
+   * therefore a ranking one. `alt` is written against the full-size original.
+   */
+  image: {
+    src: string;
+    /** Narrower derivative for the srcSet, so phones don't pull 1200px. */
+    srcSmall: string;
+    width: number;
+    height: number;
+    alt: string;
+  };
   /** Long-form copy for the product page and the feed `<description>`.
    *  Deliberately free of prices and shipping thresholds — those live in
    *  pricing.ts, and prose that repeats them is prose that drifts. */
@@ -107,7 +120,13 @@ export const KIT_TIERS: KitTier[] = [
     color: "lime",
     slug: "20-gallon-slime-powder-kit",
     sku: "SLIME-KIT-20G",
-    image: "/photos/youth-groups-1200.webp",
+    image: {
+      src: "/photos/youth-groups-1200.webp",
+      srcSmall: "/photos/youth-groups-700.webp",
+      width: 1200,
+      height: 801,
+      alt: "A youth group out on the field mid-event, everyone soaked in bright green and purple slime",
+    },
     description:
       "Makes 20 gallons of thick, brightly colored slime from our proprietary " +
       "powder \u2014 enough for a backyard party, a youth group night, or a " +
@@ -125,7 +144,13 @@ export const KIT_TIERS: KitTier[] = [
     popular: true,
     slug: "40-gallon-slime-powder-kit",
     sku: "SLIME-KIT-40G",
-    image: "/photos/events-parties-1024.webp",
+    image: {
+      src: "/photos/events-parties-1024.webp",
+      srcSmall: "/photos/events-parties-700.webp",
+      width: 1024,
+      height: 768,
+      alt: "A crowd at an outdoor party being covered in slime from pump sprayers",
+    },
     description:
       "Makes 40 gallons of thick, brightly colored slime \u2014 the size most " +
       "groups actually want. Built for 25\u201350 people: church events, school " +
@@ -142,7 +167,13 @@ export const KIT_TIERS: KitTier[] = [
     color: "pink",
     slug: "80-gallon-slime-powder-kit",
     sku: "SLIME-KIT-80G",
-    image: "/photos/content-creators-1200.webp",
+    image: {
+      src: "/photos/content-creators-1200.webp",
+      srcSmall: "/photos/content-creators-700.webp",
+      width: 1200,
+      height: 801,
+      alt: "A large crowd on an open field drenched in colorful slime during a big event finale",
+    },
     description:
       "Makes 80 gallons of thick, brightly colored slime \u2014 enough to slime " +
       "a crowd of 50\u2013100+ and still have plenty left for the video. Built " +

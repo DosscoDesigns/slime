@@ -2,6 +2,7 @@
 
 import { motion, useInView } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import KitWizard, { KIT_TIERS, KitTier } from "./KitWizard";
 import { trackSelectItem, trackViewItem, trackViewItemList } from "@/lib/analytics";
 
@@ -216,6 +217,19 @@ export default function Products() {
                       Build Your Kit
                     </motion.button>
                   </div>
+
+                  {/*
+                    Crawlable link to the kit's own page. The button above
+                    opens a modal, which Google cannot follow — without this
+                    the three kit pages would be orphaned from the home page
+                    and reachable only through the footer.
+                  */}
+                  <Link
+                    href={`/kits/${tier.slug}`}
+                    className="mt-4 inline-block text-sm text-gray-500 hover:text-lime transition-colors"
+                  >
+                    {tier.gallons} gallon kit details &rarr;
+                  </Link>
                 </motion.div>
               );
             })}

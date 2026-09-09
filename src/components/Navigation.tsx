@@ -1,15 +1,27 @@
 "use client";
 
+import Link from "next/link";
 import { motion, useScroll, useMotionValueEvent } from "framer-motion";
 import { useState } from "react";
 import { useCart } from "./CartProvider";
 
+/**
+ * next/link wrapped so it still takes Framer's animation props. Internal
+ * navigation has to go through Link — a plain <a> forces a full document
+ * reload, which throws away the client cache and re-runs every animation on
+ * the destination page.
+ */
+const MotionLink = motion.create(Link);
+
+// Root-relative, not bare hashes. A bare `#products` scrolls to nothing on
+// /privacy or /kits/*, where these links now also render — the leading slash
+// makes it navigate home and then scroll.
 const navLinks = [
-  { name: "Products", href: "#products" },
-  { name: "How It Works", href: "#how-it-works" },
-  { name: "About", href: "#about" },
-  { name: "Photos", href: "#gallery" },
-  { name: "FAQ", href: "#faq" },
+  { name: "Products", href: "/#products" },
+  { name: "How It Works", href: "/#how-it-works" },
+  { name: "About", href: "/#about" },
+  { name: "Photos", href: "/#gallery" },
+  { name: "FAQ", href: "/#faq" },
 ];
 
 export default function Navigation() {
@@ -32,20 +44,20 @@ export default function Navigation() {
       transition={{ type: "spring", stiffness: 100, damping: 20 }}
     >
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        <motion.a
-          href="#"
+        <MotionLink
+          href="/"
           className="text-2xl font-bold tracking-tight"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
           <span className="text-lime">THE SLIME</span>{" "}
           <span className="text-white">CO</span>
-        </motion.a>
+        </MotionLink>
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-8">
           {navLinks.map((link) => (
-            <motion.a
+            <MotionLink
               key={link.name}
               href={link.href}
               className="text-sm font-medium text-gray-300 hover:text-lime transition-colors relative"
@@ -53,16 +65,16 @@ export default function Navigation() {
               transition={{ type: "spring", stiffness: 300 }}
             >
               {link.name}
-            </motion.a>
+            </MotionLink>
           ))}
-          <motion.a
-            href="#products"
+          <MotionLink
+            href="/#products"
             className="bg-lime text-black px-6 py-2.5 rounded-full text-sm font-bold hover:bg-lime-dark transition-colors"
             whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(163, 230, 53, 0.4)" }}
             whileTap={{ scale: 0.95 }}
           >
             Shop Now
-          </motion.a>
+          </MotionLink>
 
           {/* Cart button */}
           <motion.button
@@ -160,22 +172,22 @@ export default function Navigation() {
       >
         <div className="bg-black/95 backdrop-blur-md px-6 py-4 flex flex-col gap-4">
           {navLinks.map((link) => (
-            <a
+            <Link
               key={link.name}
               href={link.href}
               className="text-gray-300 hover:text-lime transition-colors py-2"
               onClick={() => setMobileOpen(false)}
             >
               {link.name}
-            </a>
+            </Link>
           ))}
-          <a
-            href="#products"
+          <Link
+            href="/#products"
             className="bg-lime text-black px-6 py-2.5 rounded-full text-sm font-bold text-center"
             onClick={() => setMobileOpen(false)}
           >
             Shop Now
-          </a>
+          </Link>
         </div>
       </motion.div>
     </motion.nav>

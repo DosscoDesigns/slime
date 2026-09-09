@@ -1,4 +1,5 @@
 import Navigation from "@/components/Navigation";
+import { HomeStructuredData } from "@/components/StructuredData";
 import Hero from "@/components/Hero";
 import Products from "@/components/Products";
 import HowItWorks from "@/components/HowItWorks";
@@ -11,6 +12,7 @@ import Footer from "@/components/Footer";
 export default function Home() {
   return (
     <>
+      <HomeStructuredData />
       <Navigation />
       <main>
         <Hero />
