@@ -58,6 +58,61 @@ const GATE_ZPL =
   `^FO0,120^A0N,34,34^FD${new Date().toISOString()}^FS` +
   "^FO0,180^A0N,34,34^FDdd-mini acceptance check^FS^XZ";
 
+/**
+ * Confirm the worker is in the state a phase assumes BEFORE sending anything
+ * that carries a valid token.
+ *
+ * A POST with a matching credential is a loaded call, not neutral setup: it
+ * clears auth, and if the precondition silently is not in place it clears the
+ * cap too and prints. The limit0 phase is the sharp case — its whole assertion
+ * is "nothing came out", so it is the one phase that must never be the thing
+ * that prints. Verify, then fire.
+ *
+ * /health is the only safe probe: it is unauthenticated and has no print path
+ * behind it.
+ */
+async function preflight(expectedCap) {
+  let res, body;
+  try {
+    res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(10_000) });
+    body = await res.json().catch(() => ({}));
+  } catch (e) {
+    console.log(`  ABORT  /health unreachable: ${e.message}`);
+    console.log("         If the deploy moved the port, the cloudflared ingress may not have followed.\n");
+    process.exit(1);
+  }
+
+  if (res.status !== 200) {
+    // Since 88a4b91 a bad env value fails closed rather than disabling the
+    // limiter, so a degraded worker here means a config error, not a bug.
+    console.log(`  ABORT  /health ${res.status}: ${body.reason ?? JSON.stringify(body)}`);
+    console.log("         Worker is degraded — fix the env value it names, restart, re-run.\n");
+    process.exit(1);
+  }
+
+  if (expectedCap === undefined) return;
+
+  if (typeof body.rateLimitMax !== "number") {
+    // FAIL CLOSED. An earlier version warned and proceeded "on trust", and on
+    // its first run it printed a label: the old pre-auth worker also answers
+    // /health with 200, so the warning was the only thing between a token-
+    // carrying POST and an open print route. A cap that cannot be verified is
+    // a cap that is not known to be applied, and this phase's whole claim is
+    // that nothing printed.
+    console.log(`  ABORT  cannot confirm PRINT_WORKER_RATE_MAX=${expectedCap} — /health does not publish rateLimitMax.`);
+    console.log("         Either the auth deploy has not landed (the old worker has NO auth and NO cap,");
+    console.log("         so firing now prints), or the worker predates rateLimitMax on /health.");
+    console.log("         Refusing to send a token-carrying request that cannot be shown to be safe.\n");
+    process.exit(1);
+  }
+  if (body.rateLimitMax !== expectedCap) {
+    console.log(`  ABORT  worker reports rateLimitMax=${body.rateLimitMax}, this phase needs ${expectedCap}.`);
+    console.log("         Set it, restart, re-run. Firing now would print a label the phase claims it did not.\n");
+    process.exit(1);
+  }
+  console.log(`  ok    worker confirms rateLimitMax=${body.rateLimitMax}`);
+}
+
 async function post(token, zpl = GATE_ZPL) {
   const res = await fetch(`${BASE}/print/zpl`, {
     method: "POST",
@@ -70,6 +125,8 @@ async function post(token, zpl = GATE_ZPL) {
 
 const phase = process.argv[2];
 const ok = (m) => console.log(`  PASS  ${m}`);
+const configErr = (r) =>
+  r.status === 503 && /bad configuration|not configured/i.test(r.body);
 const bad = (m) => { console.log(`  FAIL  ${m}`); process.exitCode = 1; };
 // A check that could not run is NOT a pass. assertTimeoutCoversWorker() is
 // deliberately silent when the worker publishes no budget, so calling that
@@ -79,6 +136,7 @@ const skip = (m) => { console.log(`  SKIP  ${m}`); process.exitCode = 1; };
 console.log(`\ngate phase "${phase}" against ${BASE}\n`);
 
 if (phase === "401") {
+  await preflight();
   // A wrong token must be refused BEFORE the print path — the point is that
   // nothing comes out, not merely that the status code is 401.
   const wrong = await post("definitely-not-the-token");
@@ -87,14 +145,21 @@ if (phase === "401") {
   none.status === 401 ? ok("missing token -> 401") : bad(`missing token -> ${none.status} ${none.body}`);
   console.log("\n  CHECK THE PRINTER: nothing should have printed.\n");
 } else if (phase === "limit0") {
+  await preflight(0);
   const r = await post(TOKEN);
-  r.status === 429 ? ok(`valid token at cap 0 -> 429 (${r.body})`) : bad(`expected 429, got ${r.status} ${r.body}`);
+  if (configErr(r)) bad(`worker refused on config, not the limiter: ${r.body}`);
+  else if (r.status === 429) ok(`valid token at cap 0 -> 429 (${r.body})`);
+  else bad(`expected 429, got ${r.status} ${r.body}${r.status === 200 ? " — A LABEL PRINTED; the cap was not applied" : ""}`);
   console.log("\n  CHECK THE PRINTER: nothing should have printed.\n");
 } else if (phase === "limit1") {
+  await preflight(1);
   // Proves the limiter ALLOWS under the cap, which the cap-0 check cannot.
   // This first request is also the gate's one real label.
   const first = await post(TOKEN);
-  first.status === 200 ? ok("first request at cap 1 -> 200, one label printed") : bad(`expected 200, got ${first.status} ${first.body}`);
+  if (configErr(first)) bad(`worker refused on config, not the limiter: ${first.body}`);
+  else first.status === 200
+    ? ok("first request at cap 1 -> 200, one label printed")
+    : bad(`expected 200, got ${first.status} ${first.body}`);
   const second = await post(TOKEN);
   second.status === 429 ? ok(`second request -> 429 (${second.body})`) : bad(`expected 429, got ${second.status} ${second.body}`);
   console.log("\n  CHECK THE PRINTER: exactly ONE label reading PRINT GATE.\n");
