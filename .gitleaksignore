@@ -1,0 +1,22 @@
+# Findings gitleaks should not fail CI on, by fingerprint
+# (<commit>:<file>:<rule>:<line>).
+#
+# Add an entry ONLY for a value that is provably not a real credential, and say
+# why. A blanket ignore, a path glob, or an entry added to make a red build go
+# green defeats the scan entirely — the point of this file is that every
+# exception is one line someone can audit.
+#
+# If a REAL secret is ever found: rotate it first, then remove it from history.
+# Never silence it here.
+
+# A fake Shippo key in a unit-test fixture. The test asserts that isTestMode()
+# keys off the "shippo_test_" prefix, so the literal has to carry that prefix,
+# and gitleaks' generic-api-key rule reads the trailing entropy as a key.
+# The value never existed; the real token lives in 1Password as
+# op://DEV/dd.shippo.slime/credential.
+#
+# The current source no longer trips the rule — the fixture is now
+# "shippo_test_notarealkey", verified against gitleaks directly rather than
+# assumed. This entry exists only because the scan covers history and that
+# commit is already pushed.
+0143320fc731bb2172eb84d197e7297cd1dcf595:src/lib/shipping.test.ts:generic-api-key:38

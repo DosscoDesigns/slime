@@ -52,6 +52,12 @@ const COUPONS: CouponDef[] = [
   },
 ];
 
+/**
+ * The registry, for screens that need to enumerate codes rather than look one
+ * up. Exported readonly so a caller cannot mutate the source of truth.
+ */
+export const COUPON_LIST: readonly CouponDef[] = COUPONS;
+
 const BY_CODE: Record<string, CouponDef> = Object.fromEntries(
   COUPONS.map((c) => [c.code, c])
 );

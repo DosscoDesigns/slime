@@ -35,7 +35,7 @@ const FROM_ENV = {
 };
 
 beforeEach(() => {
-  process.env.SHIPPO_API_KEY = "shippo_test_abc123";
+  process.env.SHIPPO_API_KEY = "shippo_test_notarealkey";
   Object.assign(process.env, FROM_ENV);
 });
 
@@ -147,7 +147,7 @@ describe("getRates", () => {
     const spy = stubFetch(json(shipmentResponse()));
     await getRates(TO, PARCEL);
     expect(spy.mock.calls[0][1].headers.Authorization).toBe(
-      "ShippoToken shippo_test_abc123"
+      "ShippoToken shippo_test_notarealkey"
     );
   });
 
