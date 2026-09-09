@@ -155,6 +155,12 @@ survives blockers, so it is the honest traffic denominator. The GA4 number is th
   in DebugView and never in a standard report.
 - **`NEXT_PUBLIC_*` is baked in at build time** — setting a measurement id in
   Vercel needs a redeploy.
+- **Plausible uses the token-based loader** (`NEXT_PUBLIC_PLAUSIBLE_SRC`, the
+  full `https://plausible.io/js/pa-<token>.js` URL), not the older
+  `data-domain` + `script.<extensions>.js` form. The domain is compiled into
+  that bundle, extensions default to on, and pageviews follow
+  `history.pushState` — so `next/link` navigations are counted. The event API
+  is unchanged: `plausible(name, { props, revenue })`.
 - **No consent banner**, on purpose: US-only shipping, no remarketing, so
   CCPA notice-plus-opt-out applies rather than prior consent. The trigger that
   changes it (EEA/UK ad traffic ⇒ Consent Mode v2) is documented in
