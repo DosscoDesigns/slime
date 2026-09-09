@@ -1,8 +1,10 @@
 "use client";
 
 import { motion, useInView } from "framer-motion";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import KitWizard, { KIT_TIERS, KitTier } from "./KitWizard";
+import { trackSelectItem, trackViewItem, trackViewItemList } from "@/lib/analytics";
 
 const colorMap = {
   lime: { bg: "bg-lime/10", text: "text-lime", border: "border-lime/30", glow: "rgba(163, 230, 53, 0.15)" },
@@ -76,6 +78,14 @@ export default function Products() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
   const [wizardTier, setWizardTier] = useState<KitTier | null>(null);
+
+  // view_item_list once the lineup is actually on screen, not on mount. The
+  // impression is what the metric means — firing it at mount would count every
+  // bounce on the hero as having seen the kits, and quietly wreck the
+  // list-view-to-select rate.
+  useEffect(() => {
+    if (isInView) trackViewItemList(KIT_TIERS);
+  }, [isInView]);
 
   return (
     <>
@@ -195,11 +205,31 @@ export default function Products() {
                       } px-6 py-2.5 rounded-full text-sm font-bold cursor-pointer`}
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => setWizardTier(tier)}
+                      onClick={() => {
+                        // select_item (chosen from the list) then view_item
+                        // (its detail opened) — GA4 treats these as separate
+                        // funnel steps and the configurator is the detail view.
+                        trackSelectItem(tier);
+                        trackViewItem(tier);
+                        setWizardTier(tier);
+                      }}
                     >
                       Build Your Kit
                     </motion.button>
                   </div>
+
+                  {/*
+                    Crawlable link to the kit's own page. The button above
+                    opens a modal, which Google cannot follow — without this
+                    the three kit pages would be orphaned from the home page
+                    and reachable only through the footer.
+                  */}
+                  <Link
+                    href={`/kits/${tier.slug}`}
+                    className="mt-4 inline-block text-sm text-gray-500 hover:text-lime transition-colors"
+                  >
+                    {tier.gallons} gallon kit details &rarr;
+                  </Link>
                 </motion.div>
               );
             })}

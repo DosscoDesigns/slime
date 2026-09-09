@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { CartProvider } from "@/components/CartProvider";
 import CartDrawer from "@/components/CartDrawer";
 import StructuredData from "@/components/StructuredData";
+import Analytics from "@/components/Analytics";
 import { OG_IMAGE, SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -64,6 +65,23 @@ export const metadata: Metadata = {
     },
   },
   category: "shopping",
+  /**
+   * Search-engine ownership proof. Both are meta-tag verification, which is
+   * the method that survives a DNS provider change — the records themselves
+   * live in Cloudflare and are easy to lose track of.
+   *
+   * Set GOOGLE_SITE_VERIFICATION / BING_SITE_VERIFICATION and REDEPLOY: these
+   * are read at build time, so pasting the value into Vercel is only half the
+   * job. Unset means the key is omitted entirely rather than emitted empty.
+   */
+  verification: {
+    ...(process.env.GOOGLE_SITE_VERIFICATION
+      ? { google: process.env.GOOGLE_SITE_VERIFICATION }
+      : {}),
+    ...(process.env.BING_SITE_VERIFICATION
+      ? { other: { "msvalidate.01": process.env.BING_SITE_VERIFICATION } }
+      : {}),
+  },
 };
 
 export default function RootLayout({
@@ -82,6 +100,8 @@ export default function RootLayout({
           {children}
           <CartDrawer />
         </CartProvider>
+        {/* Last in the body: nothing above it waits on a tag to load. */}
+        <Analytics />
       </body>
     </html>
   );

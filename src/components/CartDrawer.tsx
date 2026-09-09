@@ -2,7 +2,8 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart, CartItem } from "./CartProvider";
-import { useState } from "react";
+import { trackBeginCheckout, trackViewCart } from "@/lib/analytics";
+import { useEffect, useRef, useState } from "react";
 import CheckoutModal from "./CheckoutModal";
 
 function KitSwatch({ color }: { color: string }) {
@@ -189,8 +190,20 @@ export default function CartDrawer() {
   const { items, isOpen, setIsOpen, totalItems, totalPrice, clearCart } = useCart();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
+  // view_cart on the false -> true edge only. Keyed off `isOpen` rather than
+  // the nav button because the drawer also opens by itself after an add — and
+  // that is still the customer looking at their cart.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (isOpen && !wasOpen.current && items.length > 0) trackViewCart(items);
+    wasOpen.current = isOpen;
+  }, [isOpen, items]);
+
   function handleCheckout() {
     if (items.length === 0) return;
+    // Intent, captured before the modal mounts: the gap between this and
+    // add_payment_info is the checkout-form abandonment rate.
+    trackBeginCheckout(items);
     setIsOpen(false);
     setCheckoutOpen(true);
   }

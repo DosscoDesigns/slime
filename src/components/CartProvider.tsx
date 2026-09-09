@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useMemo, useSyncExternalStore, ReactNode } from "react";
 import { ADDONS_BY_ID, addonLineCents } from "@/lib/products";
+import { trackAddToCart, trackRemoveFromCart } from "@/lib/analytics";
 
 /**
  * Sum add-on lines through the shared pricer so any quantity break is honoured
@@ -154,19 +155,35 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } else {
       writeCart([...prev, { ...item, quantity: 1 }]);
     }
+    // One kit was added, regardless of what the line already held — GA4's
+    // add_to_cart is the delta, not the resulting cart.
+    trackAddToCart({ ...item, quantity: 1 });
     setIsOpen(true);
   }, [setIsOpen]);
 
   const removeItem = useCallback((id: string) => {
-    writeCart(readCart().filter((i) => i.id !== id));
+    const prev = readCart();
+    // Read the line BEFORE dropping it — the event needs what left the cart.
+    const removed = prev.find((i) => i.id === id);
+    writeCart(prev.filter((i) => i.id !== id));
+    if (removed) trackRemoveFromCart(removed);
   }, []);
 
   const updateQuantity = useCallback((id: string, quantity: number) => {
     const prev = readCart();
+    const current = prev.find((i) => i.id === id);
     if (quantity <= 0) {
       writeCart(prev.filter((i) => i.id !== id));
+      if (current) trackRemoveFromCart(current);
     } else {
       writeCart(prev.map((i) => (i.id === id ? { ...i, quantity } : i)));
+      // A step down is a removal of the difference; a step up re-uses the
+      // add_to_cart path via the drawer's + button on an existing line.
+      if (current && quantity < current.quantity) {
+        trackRemoveFromCart({ ...current, quantity: current.quantity - quantity });
+      } else if (current && quantity > current.quantity) {
+        trackAddToCart({ ...current, quantity: quantity - current.quantity });
+      }
     }
   }, []);
 

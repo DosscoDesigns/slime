@@ -21,9 +21,9 @@
 | Language | TypeScript |
 | Styling | Tailwind CSS v4 |
 | Animation | Framer Motion |
-| Payments | Stripe (Checkout Sessions) |
+| Payments | Stripe (PaymentIntents + Elements) |
 | Package Manager | pnpm |
-| Deployment | Vercel (planned) |
+| Deployment | Vercel (live — `main` auto-deploys to production) |
 
 ## Port Allocation
 
@@ -43,14 +43,20 @@ pnpm lint         # Run ESLint
 
 ## Project Structure
 
+**This is no longer a single-page site** — see *Page structure* below for the
+routes. The storefront sections still compose `src/app/page.tsx`:
+
 ```
 src/
   app/
-    page.tsx              # Landing page (single-page site)
-    layout.tsx            # Root layout, metadata, fonts
+    page.tsx              # Storefront (Hero → Products → … → CTA)
+    layout.tsx            # Root layout, metadata, fonts, Analytics
     globals.css           # Tailwind config, CSS custom properties, theme colors
+    kits/[slug]/          # One page per kit, generated from KIT_TIERS
+    feed/products.xml/    # Google Merchant Center feed
     api/
-      checkout/route.ts   # Stripe Checkout Session creation
+      checkout/route.ts   # Stripe PaymentIntent creation
+      webhook/route.ts    # payment_intent.succeeded → emails + GA4 purchase
   components/
     Navigation.tsx        # Fixed nav with scroll effects, mobile hamburger
     Hero.tsx              # Animated hero with parallax, floating blobs
@@ -59,7 +65,10 @@ src/
     About.tsx             # Origin story + use case cards
     FAQ.tsx               # Accordion FAQ with AnimatePresence
     CTA.tsx               # Final call-to-action section
-    Footer.tsx            # Footer with links
+    Footer.tsx            # Footer with links (server component, no JS)
+    PageShell.tsx         # Shell for policy pages
+    GuideShell.tsx        # Shell for the use-case guides
+    Analytics.tsx         # GA4 + Plausible mount point
 ```
 
 ## Environment Variables
@@ -112,6 +121,76 @@ production release** — there is no staging step. Live keys are on
   the render path — both are needed.
 - **`ADDON_DEFS.bulk`** implements quantity breaks (complete bundles at bundle price,
   remainder at unit). Currently unused; sprayers are the likely next user.
+
+## Analytics
+
+**Two vendors, deliberately.** GA4 has a real e-commerce schema and is the only
+path to Google Ads / Merchant Center conversion data, but it is cookie-based and
+ad-blocked for a meaningful slice of traffic. Plausible is cookieless and
+survives blockers, so it is the honest traffic denominator. The GA4 number is the
+*shape*, the Plausible number is the *size*.
+
+- **`src/lib/analytics.ts`** is the only place a component calls analytics. It
+  fans out to both vendors, never throws, and no-ops entirely when the env vars
+  are unset (which is what local dev and previews want).
+- **`src/lib/ga-items.ts`** holds the pure item mapping — no React, no vendor
+  SDK — because the Stripe webhook needs the same mapping. One mapping is the
+  only reason GA4's revenue reconciles with Stripe's. **Add-ons are split out
+  from the kit** at the kit's *base* price, which is what makes attach rate
+  answerable; a test pins the sum back to the charged amount.
+- **`purchase` is sent SERVER-SIDE from the webhook**, never from `/success`.
+  A closed tab still paid, the browser doesn't know the authoritative amount,
+  and gtag.js is blockable. It carries its own idempotency flag
+  (`ga_purchase_sent_at`) because Stripe retries the webhook on a mail failure
+  and an un-flagged purchase recounts revenue in a way that looks plausible.
+  **Don't also fire it client-side** — Plausible's revenue goal is the only
+  thing on `/success`.
+- **Measurement Protocol answers 204 to anything**, valid or garbage. Set
+  `GA_DEBUG_MP=1` to route to the validating endpoint when changing that code;
+  it validates *without recording*, so leave it unset in production. **It
+  validates the payload only — a bogus `api_secret` returns the same empty
+  `validationMessages` as a real one** (verified 2026-09-09). The only proof a
+  credential works is a real event showing up in GA4 Realtime.
+  `session_id` + `engagement_time_msec` are effectively required or events land
+  in DebugView and never in a standard report.
+- **`NEXT_PUBLIC_*` is baked in at build time** — setting a measurement id in
+  Vercel needs a redeploy.
+- **No consent banner**, on purpose: US-only shipping, no remarketing, so
+  CCPA notice-plus-opt-out applies rather than prior consent. The trigger that
+  changes it (EEA/UK ad traffic ⇒ Consent Mode v2) is documented in
+  `Analytics.tsx`.
+- **Adding or removing a vendor means editing `/privacy` in the same commit.**
+  The policy names each one. A privacy policy that misdescribes the site is a
+  representation to customers and to Google.
+
+## Page structure
+
+The site is no longer one page. `src/app/` now holds:
+
+| Route | Purpose |
+|---|---|
+| `/` | storefront |
+| `/kits/[slug]` | one page per kit, statically generated from `KIT_TIERS` |
+| `/shipping-returns`, `/privacy`, `/terms`, `/contact` | crawlable policies — Merchant Center requires these |
+| 5 guide pages | use-case content (`Footer.tsx` lists them) |
+| `/feed/products.xml` | Google Merchant Center product feed |
+
+- **Kit identity lives in `products.ts`** — `slug`, `sku`, `image` (with real
+  width/height), `description`. JSON-LD, the feed, the kit page and GA4's
+  `item_id` all read from it. Slugs are indexed URLs and feed links: **changing
+  one needs a 301.**
+- **`productNode()` in `StructuredData.tsx` is the single Product node.** The
+  kit page and the home page both call it, so their prices cannot disagree.
+  JSON-LD is scoped: Organization/WebSite from the layout, Products only where
+  they are the subject.
+- **`pageMetadata()` in `site.ts`** gives every route its title, description and
+  self-referencing canonical. Use it; don't hand-roll `metadata`.
+- **`seo-surface.test.ts` fails the build when a new public page isn't in
+  `sitemap.ts`**, naming the route. Add it to the sitemap, or to that file's
+  `INTENTIONALLY_UNLISTED` with a reason.
+- **The feed, the JSON-LD and the visible price are asserted equal in tests.**
+  A feed that disagrees with the landing page is a Merchant Center suspension,
+  not a warning.
 
 ## SEO is a standing requirement, not a project
 

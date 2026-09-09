@@ -12,6 +12,13 @@ import {
   useElements,
 } from "@stripe/react-stripe-js";
 import { useCart, CartItem } from "./CartProvider";
+import {
+  gaClientId,
+  gaSessionId,
+  trackAddPaymentInfo,
+  trackAddShippingInfo,
+  trackCouponApplied,
+} from "@/lib/analytics";
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
@@ -96,6 +103,8 @@ function CheckoutForm({
   const [applying, setApplying] = useState(false);
   // Last known ship-to, replayed when only the coupon changes.
   const addressRef = useRef<{ country?: string; state?: string }>({});
+  // One add_shipping_info per checkout — see the AddressElement onChange below.
+  const shippingTrackedRef = useRef(false);
 
   const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -158,6 +167,9 @@ function CheckoutForm({
           setAppliedCode(null);
           setCodeError(b.couponError ?? null);
         }
+        // Only when a code was actually attempted — applyCode(null) is the
+        // "remove it" path and is not a coupon attempt.
+        if (raw) trackCouponApplied(raw, Boolean(b.couponCode));
       } else {
         setCodeError("Could not check that code. Try again.");
       }
@@ -189,6 +201,22 @@ function CheckoutForm({
         await syncAmount(value.address.country, value.address.state);
       }
     }
+
+    // The last event before money moves. Its gap to `purchase` (sent
+    // server-side from the webhook) is the payment-failure rate.
+    const finalCents = breakdown.totalCents || breakdown.subtotalCents;
+    trackAddPaymentInfo(items, finalCents, appliedCode);
+
+    // Hand the total to /success for Plausible's revenue goal. Stripe's
+    // redirect lands on a fresh page that knows only a PaymentIntent id, and
+    // re-fetching the intent server-side would add a Stripe round trip to
+    // every confirmation view. sessionStorage survives the same-tab redirect
+    // and costs nothing. GA4's revenue does NOT come from here — that is sent
+    // from the webhook off the real charge — so a miss loses only Plausible's
+    // (already lossier) number.
+    try {
+      sessionStorage.setItem("slimeco-order-cents", String(finalCents));
+    } catch {}
 
     const { error: confirmError } = await stripe.confirmPayment({
       elements,
@@ -228,7 +256,20 @@ function CheckoutForm({
                   country: e.value.address.country,
                   state: e.value.address.state,
                 };
-                syncAmount(e.value.address.country, e.value.address.state);
+                const sync = syncAmount(
+                  e.value.address.country,
+                  e.value.address.state
+                );
+                // Fire ONCE. This handler runs on every keystroke after the
+                // address first validates, so an unguarded event would report
+                // dozens of shipping steps for one customer and make the
+                // shipping-to-payment drop-off meaningless.
+                if (!shippingTrackedRef.current) {
+                  shippingTrackedRef.current = true;
+                  sync.then((b) =>
+                    trackAddShippingInfo(items, b?.totalCents ?? 0)
+                  );
+                }
               }
             }}
           />
@@ -386,7 +427,15 @@ function CheckoutModalContent({ onClose }: { onClose: () => void }) {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: cartPayload(items) }),
+        // The GA4 cookie ids ride along so the webhook can attribute the
+        // server-side purchase to THIS session rather than to (direct).
+        // Both are best-effort: undefined when cookies are blocked, and the
+        // server sanitizes them either way.
+        body: JSON.stringify({
+          items: cartPayload(items),
+          gaClientId: gaClientId(),
+          gaSessionId: gaSessionId(),
+        }),
       });
       const data = await res.json();
       if (data.clientSecret) {
