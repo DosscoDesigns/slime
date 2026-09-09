@@ -90,21 +90,30 @@ async function preflight(expectedCap) {
     process.exit(1);
   }
 
-  if (expectedCap === undefined) return;
-
-  if (typeof body.rateLimitMax !== "number") {
-    // FAIL CLOSED. An earlier version warned and proceeded "on trust", and on
-    // its first run it printed a label: the old pre-auth worker also answers
-    // /health with 200, so the warning was the only thing between a token-
-    // carrying POST and an open print route. A cap that cannot be verified is
-    // a cap that is not known to be applied, and this phase's whole claim is
-    // that nothing printed.
-    console.log(`  ABORT  cannot confirm PRINT_WORKER_RATE_MAX=${expectedCap} — /health does not publish rateLimitMax.`);
-    console.log("         Either the auth deploy has not landed (the old worker has NO auth and NO cap,");
-    console.log("         so firing now prints), or the worker predates rateLimitMax on /health.");
-    console.log("         Refusing to send a token-carrying request that cannot be shown to be safe.\n");
+  // Version signal FIRST, and note this was available before rateLimitMax
+  // existed: the pre-auth worker returns a bare {"status":"ok"}, so the mere
+  // presence of retryBudgetMs distinguishes old from new. The preflight that
+  // printed a label could have gated on this and refused. It warned instead.
+  // The check was not missing; it was not reached for.
+  if (typeof body.retryBudgetMs !== "number") {
+    console.log("  ABORT  /health has no retryBudgetMs — this is the OLD pre-auth worker.");
+    console.log("         It has NO token check and NO rate limit, so any request that");
+    console.log("         reaches /print/zpl prints. The auth deploy has not landed.\n");
     process.exit(1);
   }
+
+  if (expectedCap === undefined) return;
+
+  // Absence means UNKNOWN, never a default. When a config value fails to parse
+  // the worker omits rateLimitMax rather than reporting the fallback, because a
+  // plausible number that is not the operator's number is worse than none.
+  if (typeof body.rateLimitMax !== "number") {
+    console.log(`  ABORT  worker is degraded and does not publish rateLimitMax: ${body.reason ?? "(no reason given)"}`);
+    console.log("         A config value failed to parse, so the cap is UNKNOWN — not defaulted.");
+    console.log("         Fix the variable it names, restart, re-run.\n");
+    process.exit(1);
+  }
+
   if (body.rateLimitMax !== expectedCap) {
     console.log(`  ABORT  worker reports rateLimitMax=${body.rateLimitMax}, this phase needs ${expectedCap}.`);
     console.log("         Set it, restart, re-run. Firing now would print a label the phase claims it did not.\n");
@@ -170,6 +179,17 @@ if (phase === "401") {
     skip("timeout-vs-live-budget not checked: there is no live budget to compare against");
   } else {
     ok(`/health publishes retryBudgetMs=${live}`);
+    // The restore step is the one that gets forgotten, and its failure mode is
+    // a customer's second order of the day 429ing and reading as a bug. With
+    // the cap published, that state is observable here instead.
+    const h = await fetch(`${BASE}/health`).then((r) => r.json()).catch(() => ({}));
+    if (typeof h.rateLimitMax !== "number") {
+      console.log("  WARN  /health does not publish rateLimitMax — cannot confirm the cap was restored.");
+    } else if (h.rateLimitMax !== 30) {
+      bad(`rateLimitMax is ${h.rateLimitMax}, not the normal 30 — a gate setting was left in place`);
+    } else {
+      ok("rateLimitMax=30 — the gate's cap override was restored");
+    }
     try {
       await assertTimeoutCoversWorker();
       ok(`our ${DEFAULT_PRINT_TIMEOUT_MS}ms default covers the live budget of ${live}ms`);
