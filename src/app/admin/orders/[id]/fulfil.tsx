@@ -21,10 +21,13 @@ export default function Fulfil({
   orderId,
   hasTracking,
   shippingChargedCents,
+  cancelled,
 }: {
   orderId: string;
   hasTracking: boolean;
   shippingChargedCents: number;
+  /** Cancelled orders refuse every action below; the server enforces it too. */
+  cancelled: boolean;
 }) {
   const [quote, quoteAction, quoting] = useActionState(quoteShipping, null);
   const [buy, buyAction, buying] = useActionState(buyAndPrintLabel, null);
@@ -39,6 +42,13 @@ export default function Fulfil({
       <h2 className="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-lime-400">
         Fulfilment
       </h2>
+
+      {cancelled ? (
+        <p className="mb-4 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-400">
+          This order is cancelled. Quoting, buying a label and emailing the customer are all
+          refused until it is un-cancelled.
+        </p>
+      ) : null}
 
       <form action={quoteAction} className="mb-4">
         <input type="hidden" name="orderId" value={orderId} />
@@ -67,7 +77,7 @@ export default function Fulfil({
         </div>
         <button
           type="submit"
-          disabled={quoting}
+          disabled={quoting || cancelled}
           className="mt-3 rounded-full border border-zinc-700 px-5 py-2 text-xs font-bold uppercase tracking-wider hover:border-lime-500 disabled:opacity-50"
         >
           {quoting ? "Quoting…" : "Get rates"}
@@ -112,7 +122,7 @@ export default function Fulfil({
           </ul>
           <button
             type="submit"
-            disabled={buying || hasTracking}
+            disabled={buying || hasTracking || cancelled}
             className="rounded-full bg-lime-400 px-5 py-2 text-xs font-bold uppercase tracking-wider text-black disabled:opacity-40"
           >
             {buying ? "Buying…" : "Buy label + print"}
@@ -131,7 +141,7 @@ export default function Fulfil({
         <input type="hidden" name="orderId" value={orderId} />
         <button
           type="submit"
-          disabled={mailing || !hasTracking}
+          disabled={mailing || !hasTracking || cancelled}
           className="rounded-full border border-zinc-700 px-5 py-2 text-xs font-bold uppercase tracking-wider hover:border-lime-500 disabled:opacity-40"
         >
           {mailing ? "Sending…" : "Email customer tracking"}

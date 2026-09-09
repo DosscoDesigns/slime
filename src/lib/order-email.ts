@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import { CARRIERS, detectCarrier, type Carrier } from "./carriers";
 import { CONTACT_EMAIL } from "@/lib/site";
 
 interface RenderArgs {
@@ -418,49 +419,14 @@ export function renderCustomerReceipt({ pi, charge }: RenderArgs): RenderedEmail
  * Shipping notice
  * ──────────────────────────────────────────────────────────────────────────── */
 
-export type Carrier = "usps" | "ups" | "fedex";
-
-interface CarrierInfo {
-  name: string;
-  trackUrl: (tracking: string) => string;
-}
-
-const CARRIERS: Record<Carrier, CarrierInfo> = {
-  usps: {
-    name: "USPS",
-    trackUrl: (t) =>
-      `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(t)}`,
-  },
-  ups: {
-    name: "UPS",
-    trackUrl: (t) =>
-      `https://www.ups.com/track?tracknum=${encodeURIComponent(t)}`,
-  },
-  fedex: {
-    name: "FedEx",
-    trackUrl: (t) =>
-      `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(t)}`,
-  },
-};
-
 /**
- * Guess the carrier from the tracking number's shape.
- *
- * Only the three carriers we actually ship with. USPS IMpb numbers are 20-22
- * digits and effectively always start with 9 for domestic retail/commercial
- * services; UPS is the unmistakable 1Z prefix; FedEx Express/Ground are 12 or
- * 15 digits. Anything unrecognised falls back to USPS because that is what we
- * ship, and a wrong-but-plausible tracking link is still better than none —
- * callers that know the carrier should pass it explicitly rather than rely on
- * this.
+ * Carrier identity and tracking links live in carriers.ts so the admin portal
+ * and the Shippo tracking client build the SAME url as this email does.
+ * Re-exported here because callers (and the tests) already import them from
+ * this module.
  */
-export function detectCarrier(tracking: string): Carrier {
-  const t = tracking.replace(/\s+/g, "").toUpperCase();
-  if (t.startsWith("1Z")) return "ups";
-  if (/^\d{20,22}$/.test(t)) return "usps";
-  if (/^\d{12}$|^\d{15}$/.test(t)) return "fedex";
-  return "usps";
-}
+export type { Carrier } from "./carriers";
+export { detectCarrier } from "./carriers";
 
 interface ShippingNoticeArgs extends RenderArgs {
   /** Carrier tracking number, as printed on the label. */

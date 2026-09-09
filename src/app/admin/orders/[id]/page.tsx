@@ -2,7 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin, getStripe, money } from "@/lib/admin-session";
 import { getOrder } from "@/lib/orders";
+import { CARRIERS } from "@/lib/carriers";
+import { orderDurations, formatDuration } from "@/lib/delivery-stats";
+import { isTerminal } from "@/lib/tracking";
 import Fulfil from "./fulfil";
+import LiveTracking from "./live-tracking";
+import RefundAndCancel from "./refund-cancel";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +18,23 @@ export default async function AdminOrder({
 }) {
   await requireAdmin();
   const { id } = await params;
-  const order = await getOrder(getStripe(), id);
+  const stripe = getStripe();
+  const order = await getOrder(stripe, id);
   if (!order) notFound();
+
+  // The itemised refund history is the ONE thing that needs an extra call —
+  // charge.amount_refunded already gave us the summary for free. Never read
+  // charge.refunds: it is optional on the Charge and recent API versions stop
+  // populating it unless explicitly expanded.
+  const refundList = order.chargeId
+    ? (await stripe.refunds.list({ charge: order.chargeId, limit: 20 })).data
+    : [];
+
+  // A nonce the refund form echoes back, so a double-click, a back-button
+  // resubmit and a React retry all reuse one Stripe idempotency key and cannot
+  // issue a second refund. A deliberate second refund needs a fresh page load.
+  const refundNonce = crypto.randomUUID();
+  const durations = orderDurations(order);
 
   const addr = order.shipTo;
   const row = "flex justify-between py-1 text-sm";
@@ -31,7 +51,20 @@ export default async function AdminOrder({
         </h1>
         <p className="mt-1 text-sm text-zinc-500">
           {order.createdAt.toLocaleString()} · {money(order.amountCents)}
+          {order.refund.amountRefundedCents > 0 ? (
+            <span className="text-amber-400">
+              {" "}
+              · {money(order.refund.amountRefundedCents)} refunded
+            </span>
+          ) : null}
         </p>
+        {order.cancelledAt ? (
+          <p className="mt-3 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-400">
+            <strong className="text-zinc-200">Cancelled</strong>{" "}
+            {order.cancelledAt.toLocaleString()}
+            {order.cancelledReason ? ` — ${order.cancelledReason}` : ""}
+          </p>
+        ) : null}
       </header>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -101,12 +134,48 @@ export default async function AdminOrder({
             <p className="text-sm text-zinc-400">{order.customerPhone}</p>
           ) : null}
 
-          {order.trackingNumber ? (
+          {order.tracking ? (
             <div className="mt-4 rounded-md border border-zinc-800 bg-black/40 p-3">
               <div className="text-[11px] uppercase tracking-wider text-zinc-500">
-                Tracking
+                {CARRIERS[order.tracking.carrier].name} tracking
               </div>
-              <div className="break-all font-mono text-sm">{order.trackingNumber}</div>
+              <a
+                href={order.tracking.url}
+                target="_blank"
+                rel="noreferrer"
+                className="block break-all font-mono text-sm text-lime-400 underline decoration-lime-400/40 underline-offset-2 hover:decoration-lime-400"
+              >
+                {order.tracking.number}
+              </a>
+              {order.tracking.status ? (
+                <div className="mt-1 text-xs text-zinc-400">
+                  {order.tracking.status.replace(/_/g, " ")}
+                  {order.tracking.statusAt
+                    ? ` · ${order.tracking.statusAt.toLocaleString()}`
+                    : ""}
+                </div>
+              ) : null}
+              {order.tracking.etaAt && !order.tracking.deliveredAt ? (
+                <div className="text-xs text-zinc-500">
+                  ETA {order.tracking.etaAt.toLocaleDateString()}
+                </div>
+              ) : null}
+              {order.tracking.deliveredAt ? (
+                <div className="text-xs text-lime-400">
+                  Delivered {order.tracking.deliveredAt.toLocaleString()}
+                  {durations.totalHours !== null
+                    ? ` · ${formatDuration(durations.totalHours)} door to door`
+                    : ""}
+                </div>
+              ) : null}
+              {durations.handlingHours !== null ? (
+                <div className="text-xs text-zinc-600">
+                  our handling {formatDuration(durations.handlingHours)}
+                  {durations.transitHours !== null
+                    ? ` · carrier ${formatDuration(durations.transitHours)}`
+                    : ""}
+                </div>
+              ) : null}
               {order.shippingCostCents != null ? (
                 <div className="mt-1 text-xs text-zinc-500">
                   postage {money(order.shippingCostCents)} · charged{" "}
@@ -127,6 +196,11 @@ export default async function AdminOrder({
                   ? `customer emailed ${order.shippingEmailSentAt.toLocaleString()}`
                   : "customer NOT yet emailed"}
               </div>
+              <LiveTracking
+                orderId={order.id}
+                cachedStatus={order.tracking.status}
+                terminal={isTerminal(order.tracking.status)}
+              />
             </div>
           ) : null}
 
@@ -143,11 +217,28 @@ export default async function AdminOrder({
         </section>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 space-y-4">
         <Fulfil
           orderId={order.id}
-          hasTracking={Boolean(order.trackingNumber)}
+          hasTracking={Boolean(order.tracking)}
           shippingChargedCents={order.shippingCents}
+          cancelled={Boolean(order.cancelledAt)}
+        />
+        <RefundAndCancel
+          orderId={order.id}
+          nonce={refundNonce}
+          refundableCents={order.refund.refundableCents}
+          refundedCents={order.refund.amountRefundedCents}
+          disputed={order.refund.disputed}
+          cancelledAt={order.cancelledAt?.toLocaleString() ?? null}
+          cancelledReason={order.cancelledReason}
+          refunds={refundList.map((r) => ({
+            id: r.id,
+            amountCents: r.amount,
+            createdAt: new Date(r.created * 1000).toLocaleString(),
+            status: r.status ?? "unknown",
+            reason: r.reason ?? null,
+          }))}
         />
       </div>
 

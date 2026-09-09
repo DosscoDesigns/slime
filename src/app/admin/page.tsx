@@ -1,32 +1,81 @@
 import Link from "next/link";
 import { requireAdmin, getStripe, money } from "@/lib/admin-session";
-import { listOrders, type Order } from "@/lib/orders";
+import { listOrders, rowStatus } from "@/lib/orders";
+import { deliveryStats, orderDurations, formatDuration } from "@/lib/delivery-stats";
+import { CARRIERS } from "@/lib/carriers";
+import OrdersTable, { type OrderRow } from "./orders-table";
 import { signOut } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-const STATE_STYLE: Record<Order["state"], { label: string; cls: string }> = {
-  unfulfilled: { label: "Needs shipping", cls: "bg-red-500/15 text-red-300 border-red-500/30" },
-  label_bought: { label: "Label bought", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
-  shipped: { label: "Shipped", cls: "bg-lime-500/15 text-lime-300 border-lime-500/30" },
+const STATUS_WORD: Record<string, string> = {
+  pre_transit: "label created",
+  transit: "in transit",
+  delivered: "delivered",
+  returned: "returned",
+  failure: "failed",
+  unknown: "unknown",
 };
 
-export default async function AdminOrders() {
+export default async function AdminOrders({
+  searchParams,
+}: {
+  searchParams: Promise<{ show?: string }>;
+}) {
   await requireAdmin();
-  const orders = await listOrders(getStripe());
+  const [orders, { show }] = await Promise.all([
+    listOrders(getStripe()),
+    searchParams,
+  ]);
 
-  const needing = orders.filter((o) => o.state !== "shipped").length;
-  const revenue = orders.reduce((s, o) => s + o.amountCents, 0);
+  // Every total below is computed over ALL orders, never the filtered view. The
+  // default filter hides delivered and cancelled orders, so filtering first
+  // would quietly turn "revenue" into "revenue from unfinished orders".
+  const needing = orders.filter((o) => o.needsAttention).length;
+  const gross = orders.reduce((s, o) => s + o.amountCents, 0);
+  const refunded = orders.reduce((s, o) => s + o.refund.amountRefundedCents, 0);
   const postage = orders.reduce((s, o) => s + (o.shippingCostCents ?? 0), 0);
   const shipCharged = orders.reduce((s, o) => s + o.shippingCents, 0);
+  const stats = deliveryStats(orders);
+
+  const rows: OrderRow[] = orders.map((o) => {
+    const d = orderDurations(o);
+    return {
+      id: o.id,
+      status: rowStatus(o),
+      date: o.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      customer: o.customerName ?? "(no name)",
+      items: o.lines.map((l) => `${l.name} ×${l.quantity}`).join(", ") || "—",
+      total: money(o.amountCents),
+      refunded: o.refund.amountRefundedCents > 0 ? money(o.refund.amountRefundedCents) : null,
+      tracking: o.tracking
+        ? {
+            number: o.tracking.number,
+            url: o.tracking.url,
+            statusLabel: o.tracking.status
+              ? `${CARRIERS[o.tracking.carrier].name} · ${STATUS_WORD[o.tracking.status] ?? o.tracking.status}`
+              : null,
+          }
+        : null,
+      delivery: d.totalHours !== null ? formatDuration(d.totalHours) : "—",
+      needsAttention: o.needsAttention,
+    };
+  });
 
   return (
-    <main className="mx-auto max-w-5xl px-5 py-10">
-      <header className="mb-8 flex items-baseline justify-between gap-4">
+    <main className="mx-auto max-w-6xl px-5 py-10">
+      <header className="mb-6 flex items-baseline justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight">Orders</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            {orders.length} paid · {needing} needing attention · {money(revenue)} gross
+            {orders.length} paid · {needing} needing attention · {money(gross)} gross
+            {refunded > 0 ? (
+              <>
+                {" "}
+                · <span className="text-zinc-400">{money(gross - refunded)} net</span> after{" "}
+                {money(refunded)} refunded
+              </>
+            ) : null}
           </p>
         </div>
         <nav className="flex items-center gap-4 text-sm">
@@ -42,7 +91,7 @@ export default async function AdminOrders() {
       </header>
 
       {postage > 0 ? (
-        <div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm">
+        <div className="mb-3 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm">
           <span className="text-zinc-400">Shipping charged </span>
           <span className="font-semibold">{money(shipCharged)}</span>
           <span className="text-zinc-400"> · postage paid </span>
@@ -59,43 +108,25 @@ export default async function AdminOrders() {
         </div>
       ) : null}
 
-      {orders.length === 0 ? (
-        <p className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-8 text-center text-zinc-500">
-          No paid orders yet.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {orders.map((o) => {
-            const s = STATE_STYLE[o.state];
-            return (
-              <li key={o.id}>
-                <Link
-                  href={`/admin/orders/${o.id}`}
-                  className="flex items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 hover:border-zinc-700"
-                >
-                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${s.cls}`}>
-                    {s.label}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">
-                      {o.customerName ?? "(no name)"}
-                    </span>
-                    <span className="block truncate text-xs text-zinc-500">
-                      {o.lines.map((l) => `${l.name} ×${l.quantity}`).join(", ") || "—"}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-right">
-                    <span className="block font-semibold">{money(o.amountCents)}</span>
-                    <span className="block text-xs text-zinc-500">
-                      {o.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                    </span>
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      {stats.n > 0 ? (
+        <div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm">
+          <span className="text-zinc-400">Median delivery </span>
+          <span className="font-semibold">{formatDuration(stats.medianTotalHours)}</span>
+          <span className="text-zinc-600"> = </span>
+          <span className="text-zinc-400">our handling </span>
+          <span className="font-semibold">{formatDuration(stats.medianHandlingHours)}</span>
+          <span className="text-zinc-600"> + </span>
+          <span className="text-zinc-400">carrier transit </span>
+          <span className="font-semibold">{formatDuration(stats.medianTransitHours)}</span>
+          <span className="text-zinc-600">
+            {" "}
+            · medians over {stats.n} delivered order{stats.n === 1 ? "" : "s"}
+            {stats.n < 5 ? " (too few to be a statistic yet)" : ""}
+          </span>
+        </div>
+      ) : null}
+
+      <OrdersTable rows={rows} defaultFilter={show === "all" ? "all" : "open"} />
     </main>
   );
 }
