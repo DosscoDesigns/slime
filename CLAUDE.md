@@ -21,9 +21,9 @@
 | Language | TypeScript |
 | Styling | Tailwind CSS v4 |
 | Animation | Framer Motion |
-| Payments | Stripe (Checkout Sessions) |
+| Payments | Stripe (PaymentIntents + Elements) |
 | Package Manager | pnpm |
-| Deployment | Vercel (planned) |
+| Deployment | Vercel (live — `main` auto-deploys to production) |
 
 ## Port Allocation
 
@@ -43,14 +43,20 @@ pnpm lint         # Run ESLint
 
 ## Project Structure
 
+**This is no longer a single-page site** — see *Page structure* below for the
+routes. The storefront sections still compose `src/app/page.tsx`:
+
 ```
 src/
   app/
-    page.tsx              # Landing page (single-page site)
-    layout.tsx            # Root layout, metadata, fonts
+    page.tsx              # Storefront (Hero → Products → … → CTA)
+    layout.tsx            # Root layout, metadata, fonts, Analytics
     globals.css           # Tailwind config, CSS custom properties, theme colors
+    kits/[slug]/          # One page per kit, generated from KIT_TIERS
+    feed/products.xml/    # Google Merchant Center feed
     api/
-      checkout/route.ts   # Stripe Checkout Session creation
+      checkout/route.ts   # Stripe PaymentIntent creation
+      webhook/route.ts    # payment_intent.succeeded → emails + GA4 purchase
   components/
     Navigation.tsx        # Fixed nav with scroll effects, mobile hamburger
     Hero.tsx              # Animated hero with parallax, floating blobs
@@ -59,7 +65,10 @@ src/
     About.tsx             # Origin story + use case cards
     FAQ.tsx               # Accordion FAQ with AnimatePresence
     CTA.tsx               # Final call-to-action section
-    Footer.tsx            # Footer with links
+    Footer.tsx            # Footer with links (server component, no JS)
+    PageShell.tsx         # Shell for policy pages
+    GuideShell.tsx        # Shell for the use-case guides
+    Analytics.tsx         # GA4 + Plausible mount point
 ```
 
 ## Environment Variables
