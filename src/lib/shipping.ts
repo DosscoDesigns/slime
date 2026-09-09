@@ -121,19 +121,33 @@ export function isTestMode(): boolean {
   return (process.env.SHIPPO_API_KEY ?? "").startsWith("shippo_test_");
 }
 
-async function shippo<T>(path: string, body: unknown): Promise<T> {
+/**
+ * Buying a label is worth waiting for — the alternative to a slow success is
+ * an orphaned label. Reads are not: they run on request paths with a platform
+ * function budget, and a hung read must fail fast enough that our own catch
+ * still runs. Hence two budgets rather than one.
+ */
+export const WRITE_TIMEOUT_MS = 30_000;
+export const READ_TIMEOUT_MS = 4_000;
+
+async function shippoRequest<T>(
+  method: "GET" | "POST",
+  path: string,
+  body?: unknown,
+  timeoutMs: number = WRITE_TIMEOUT_MS
+): Promise<T> {
   assertServerSide();
   assertShippoConfigured();
 
   const res = await fetch(`${SHIPPO_BASE}${path}`, {
-    method: "POST",
+    method,
     headers: {
       // Shippo's scheme, not Bearer.
       Authorization: `ShippoToken ${process.env.SHIPPO_API_KEY!}`,
-      "Content-Type": "application/json",
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   if (!res.ok) {
@@ -142,6 +156,20 @@ async function shippo<T>(path: string, body: unknown): Promise<T> {
     );
   }
   return (await res.json()) as T;
+}
+
+async function shippo<T>(path: string, body: unknown): Promise<T> {
+  return shippoRequest<T>("POST", path, body);
+}
+
+/** GET on a read path — short timeout, no body. */
+export async function shippoGet<T>(path: string): Promise<T> {
+  return shippoRequest<T>("GET", path, undefined, READ_TIMEOUT_MS);
+}
+
+/** POST on a read path (registration) — short timeout. */
+export async function shippoPostFast<T>(path: string, body: unknown): Promise<T> {
+  return shippoRequest<T>("POST", path, body, READ_TIMEOUT_MS);
 }
 
 /**
@@ -274,11 +302,20 @@ interface ShippoTransactionResponse {
  * With a live key this SPENDS MONEY and is not reversible without a refund
  * request, so callers must be certain of the rate before calling.
  */
-export async function buyLabel(rateId: string): Promise<PurchasedLabel> {
+export async function buyLabel(
+  rateId: string,
+  /**
+   * Stamped onto the Shippo Transaction and echoed on the Track object, so an
+   * inbound tracking webhook carries its own order reference and needs no
+   * lookup. Shippo caps this at 100 characters; a PaymentIntent id is ~27.
+   */
+  orderRef?: string
+): Promise<PurchasedLabel> {
   const res = await shippo<ShippoTransactionResponse>("/transactions/", {
     rate: rateId,
     label_file_type: LABEL_FILE_TYPE,
     async: false,
+    ...(orderRef ? { metadata: orderRef.slice(0, 100) } : {}),
   });
 
   if (res.status !== "SUCCESS" || !res.label_url || !res.tracking_number) {
