@@ -41,10 +41,18 @@ import {
 export type { TrackableCartItem, Ga4Item } from "@/lib/ga-items";
 
 export const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
-export const PLAUSIBLE_DOMAIN = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN;
+/**
+ * Plausible's token-based script URL, e.g.
+ * https://plausible.io/js/pa-<token>.js
+ *
+ * The whole URL rather than a domain: this build compiles the site domain in,
+ * so the URL *is* the site identifier. Not a secret — it ships in the page by
+ * design. Unset disables Plausible entirely.
+ */
+export const PLAUSIBLE_SRC = process.env.NEXT_PUBLIC_PLAUSIBLE_SRC;
 
 export const gaConfigured = Boolean(GA_MEASUREMENT_ID);
-export const plausibleConfigured = Boolean(PLAUSIBLE_DOMAIN);
+export const plausibleConfigured = Boolean(PLAUSIBLE_SRC);
 
 type PlausibleProps = Record<string, string | number | boolean>;
 

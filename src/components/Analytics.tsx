@@ -5,7 +5,7 @@ import { GoogleAnalytics, sendGAEvent } from "@next/third-parties/google";
 import { useReportWebVitals } from "next/web-vitals";
 import {
   GA_MEASUREMENT_ID,
-  PLAUSIBLE_DOMAIN,
+  PLAUSIBLE_SRC,
   gaConfigured,
   plausibleConfigured,
 } from "@/lib/analytics";
@@ -54,30 +54,33 @@ export default function Analytics() {
       {plausibleConfigured && (
         <>
           {/*
-            Queue stub, and it has to come first. Plausible's own snippet
-            defines this so events fired before the script finishes loading are
-            buffered rather than dropped — without it, an "Add to Cart" from a
-            fast clicker on a slow connection silently disappears.
+            Queue + init stub, verbatim from Plausible's own snippet, and it
+            has to come first.
+
+            `q` buffers events fired before the script finishes loading — an
+            "Add to Cart" from a fast clicker on a slow connection would
+            otherwise vanish. The loader drains that queue during init.
+
+            `plausible.init()` stores its options on `plausible.o`, which the
+            real script picks up when it arrives. The two are order-independent:
+            if the script wins the race it installs the real `init`, and the
+            `||` here leaves it alone.
           */}
           <Script id="plausible-init" strategy="afterInteractive">
-            {`window.plausible=window.plausible||function(){(window.plausible.q=window.plausible.q||[]).push(arguments)}`}
+            {`window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()`}
           </Script>
           {/*
-            Extension bundle, in one file:
-              file-downloads  — PDF/asset clicks
-              outbound-links  — clicks off to Amazon/Shopify listings
-              revenue         — money on the Purchase goal
-              tagged-events   — manual window.plausible() calls
-            Verified this exact filename serves a real 4.9KB build; an
-            unrecognised extension name 404s and takes analytics down silently,
-            so do not edit this string casually.
+            Plausible's token-based loader. NOT the older
+            `data-domain` + `script.<extensions>.js` form — this build compiles
+            the site domain in, so there is no data-domain attribute and no
+            extension filename to get wrong.
+
+            outboundLinks, fileDownloads and formSubmissions default to ON in
+            this build, and autoCapturePageviews patches history.pushState — so
+            client-side navigations through next/link are counted, which the
+            legacy script did NOT do without the manual variant.
           */}
-          <Script
-            defer
-            strategy="afterInteractive"
-            data-domain={PLAUSIBLE_DOMAIN}
-            src="https://plausible.io/js/script.file-downloads.outbound-links.revenue.tagged-events.js"
-          />
+          <Script defer strategy="afterInteractive" src={PLAUSIBLE_SRC} />
         </>
       )}
 
