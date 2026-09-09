@@ -5,6 +5,11 @@ import { renderCustomerReceipt, renderOpsNotice } from "@/lib/order-email";
 import { logError, logInfo, logWarn, errorContext } from "@/lib/logger";
 import { resolveCharge } from "@/lib/stripe-charge";
 import { pendingNotifications } from "@/lib/order-notifications";
+import {
+  GA_PURCHASE_FLAG,
+  measurementProtocolConfigured,
+  sendPurchaseForPaymentIntent,
+} from "@/lib/ga-measurement-protocol";
 
 // Stripe signature verification needs the exact raw request bytes, so this
 // route reads request.text() rather than parsed JSON. Run on the Node
@@ -87,7 +92,43 @@ export async function POST(request: NextRequest) {
   const opsAlreadySent = !pending.ops;
   const customerAlreadySent = !pending.customer;
 
+  // GA4's purchase is counted here rather than in the browser, so it needs its
+  // OWN idempotency flag: Stripe retries this webhook whenever a mail send
+  // fails, and an un-flagged purchase would be counted again on every retry —
+  // inflating revenue in a way that looks plausible and is therefore very hard
+  // to notice. Tracked separately from the mail flags because it was added
+  // later: orders predating it must still be able to send one.
+  const gaPurchasePending =
+    measurementProtocolConfigured && !pi.metadata?.[GA_PURCHASE_FLAG];
+
+  if (opsAlreadySent && customerAlreadySent && !gaPurchasePending) {
+    return NextResponse.json({ received: true, action: "skipped_duplicate" });
+  }
+
+  // Fire-and-forget relative to the order: a failure returns false and simply
+  // leaves the flag unset, so the next retry (if any) tries again. It must
+  // never throw — the mail below is the part that actually matters.
+  const sentNow: Record<string, string> = {};
+  if (gaPurchasePending && (await sendPurchaseForPaymentIntent(pi))) {
+    sentNow[GA_PURCHASE_FLAG] = new Date().toISOString();
+  }
+
+  // Both mails already went out and the only outstanding work was the GA
+  // event. Persist the flag and stop — re-sending a receipt would be worse
+  // than any analytics gap.
   if (opsAlreadySent && customerAlreadySent) {
+    if (Object.keys(sentNow).length > 0) {
+      try {
+        await stripe.paymentIntents.update(pi.id, {
+          metadata: { ...pi.metadata, ...sentNow },
+        });
+      } catch (err) {
+        logWarn("failed to flag the GA4 purchase as sent — it may recount", {
+          payment_intent: pi.id,
+          ...errorContext(err),
+        });
+      }
+    }
     return NextResponse.json({ received: true, action: "skipped_duplicate" });
   }
 
@@ -120,7 +161,6 @@ export async function POST(request: NextRequest) {
   // recipient the same Message-ID, so a mail client dedupes them and an owner
   // who is also the buyer sees only one copy — and either way the customer
   // received an internal fulfillment ticket written for the shop.
-  const sentNow: Record<string, string> = {};
   const failures: string[] = [];
 
   if (!opsAlreadySent) {

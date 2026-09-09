@@ -1,8 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { priceCart, type CartLineInput } from "@/lib/pricing";
+import { priceKitCents } from "@/lib/products";
+import { cartToGa4Items, encodeGa4Items } from "@/lib/ga-items";
 import { resolveOrderTotals } from "@/lib/coupon-redemption";
 import { logError, logWarn, errorContext } from "@/lib/logger";
+
+/**
+ * GA4 ids arrive from the browser and are written straight into Stripe
+ * metadata, so they are sanitized rather than trusted: both are short
+ * dot-separated digit strings by Google's own format, and anything else is
+ * dropped. Without this an attacker could stuff 500 characters of arbitrary
+ * text into every order record.
+ */
+function safeGaId(value: unknown): string {
+  return typeof value === "string" && /^[0-9]{1,20}(\.[0-9]{1,20})?$/.test(value)
+    ? value
+    : "";
+}
+
+/**
+ * GA4 line items for the server-side purchase event, priced with the SAME
+ * trusted recomputation the charge uses — never the client's priceCents, or a
+ * tampered cart would report inflated revenue even though it charged correctly.
+ *
+ * Analytics must never break a checkout, so a failure here is swallowed and
+ * costs only item-level detail; the order total comes off the PaymentIntent.
+ */
+function encodeGaItems(cartItems: CartLineInput[]): string {
+  try {
+    return encodeGa4Items(
+      cartToGa4Items(
+        cartItems.map((i) => ({
+          priceCents: priceKitCents({
+            gallons: i.gallons,
+            color: i.color,
+            addons: i.addons,
+          }),
+          quantity: i.quantity,
+          gallons: i.gallons,
+          color: i.color,
+          addons: i.addons,
+        }))
+      )
+    );
+  } catch {
+    return "";
+  }
+}
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -58,6 +103,12 @@ export async function POST(request: NextRequest) {
         shipping_cents: String(totals.shippingCents),
         tax_cents: String(totals.taxCents),
         notification_email: process.env.ORDER_NOTIFICATION_EMAIL ?? "",
+        // Captured here so the webhook can send GA4's purchase event
+        // server-side and still attribute it to the session that produced it.
+        // See src/lib/ga-measurement-protocol.ts.
+        ga_client_id: safeGaId(body.gaClientId),
+        ga_session_id: safeGaId(body.gaSessionId),
+        ga_items: encodeGaItems(cartItems),
       },
     });
 

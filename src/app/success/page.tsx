@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { useEffect } from "react";
 import { useCart } from "@/components/CartProvider";
+import { trackPurchase } from "@/lib/analytics";
 
 export default function SuccessPage() {
   const { clearCart } = useCart();
@@ -12,6 +13,22 @@ export default function SuccessPage() {
     clearCart();
     try { localStorage.removeItem("slimeco-cart"); } catch {}
   }, [clearCart]);
+
+  // Plausible's revenue goal. GA4's purchase is deliberately NOT fired here —
+  // it is sent server-side from the Stripe webhook so a closed tab still
+  // counts. See trackPurchase() in src/lib/analytics.ts.
+  //
+  // The key is REMOVED as it is read, which is what keeps a page refresh from
+  // counting the same order twice.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("slimeco-order-cents");
+      if (!raw) return;
+      sessionStorage.removeItem("slimeco-order-cents");
+      const cents = Number(raw);
+      if (Number.isFinite(cents) && cents > 0) trackPurchase(cents);
+    } catch {}
+  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6">

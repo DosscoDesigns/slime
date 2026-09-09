@@ -75,6 +75,26 @@ export interface KitTier {
   basePriceCents: number;
   color: "lime" | "purple" | "pink";
   popular?: boolean;
+  /**
+   * URL segment for the kit's own page (/kits/<slug>). These are INDEXED URLs
+   * and they are the `link` in the Google product feed — changing one without
+   * a 301 drops its ranking and breaks the Merchant Center item.
+   */
+  slug: string;
+  /**
+   * Stable merchant SKU. The same string is the Product JSON-LD `sku`, the
+   * feed's `g:id`, and the GA4 `item_id`, so a row in Merchant Center, a row
+   * in GA4 and an order line all reconcile against one identifier. Never
+   * recycle a retired SKU for a different product.
+   */
+  sku: string;
+  /** Primary product image (public/ path). Feeds the product page hero, the
+   *  feed's `g:image_link`, and the Product JSON-LD `image`. */
+  image: string;
+  /** Long-form copy for the product page and the feed `<description>`.
+   *  Deliberately free of prices and shipping thresholds — those live in
+   *  pricing.ts, and prose that repeats them is prose that drifts. */
+  description: string;
 }
 
 export const KIT_TIERS: KitTier[] = [
@@ -85,6 +105,15 @@ export const KIT_TIERS: KitTier[] = [
     basePrice: 21.99,
     basePriceCents: 2199,
     color: "lime",
+    slug: "20-gallon-slime-powder-kit",
+    sku: "SLIME-KIT-20G",
+    image: "/photos/youth-groups-1200.webp",
+    description:
+      "Makes 20 gallons of thick, brightly colored slime from our proprietary " +
+      "powder \u2014 enough for a backyard party, a youth group night, or a " +
+      "classroom fundraiser of about 10\u201325 people. Just add water and it " +
+      "thickens in minutes: no cooking, no measuring, no mixing station. " +
+      "Ships from Florida.",
   },
   {
     gallons: 40,
@@ -94,6 +123,15 @@ export const KIT_TIERS: KitTier[] = [
     basePriceCents: 3799,
     color: "purple",
     popular: true,
+    slug: "40-gallon-slime-powder-kit",
+    sku: "SLIME-KIT-40G",
+    image: "/photos/events-parties-1024.webp",
+    description:
+      "Makes 40 gallons of thick, brightly colored slime \u2014 the size most " +
+      "groups actually want. Built for 25\u201350 people: church events, school " +
+      "fundraisers, color runs and summer camp game nights. Just add water; " +
+      "the premium powder hydrates in minutes and stays thick through a whole " +
+      "event. Ships from Florida.",
   },
   {
     gallons: 80,
@@ -102,12 +140,32 @@ export const KIT_TIERS: KitTier[] = [
     basePrice: 67.99,
     basePriceCents: 6799,
     color: "pink",
+    slug: "80-gallon-slime-powder-kit",
+    sku: "SLIME-KIT-80G",
+    image: "/photos/content-creators-1200.webp",
+    description:
+      "Makes 80 gallons of thick, brightly colored slime \u2014 enough to slime " +
+      "a crowd of 50\u2013100+ and still have plenty left for the video. Built " +
+      "for big fundraisers, camp finales, festival booths and content shoots. " +
+      "Just add water. Ships from Florida.",
   },
 ];
 
 export const KIT_TIERS_BY_GALLONS: Record<number, KitTier> = Object.fromEntries(
   KIT_TIERS.map((t) => [t.gallons, t])
 );
+
+export const KIT_TIERS_BY_SLUG: Record<string, KitTier> = Object.fromEntries(
+  KIT_TIERS.map((t) => [t.slug, t])
+);
+
+/**
+ * Google product taxonomy for every kit. Merchant Center will guess a category
+ * if this is omitted, and it guesses badly for novelty goods — an explicit
+ * value keeps the items in the same bucket competitors bid and rank in.
+ */
+export const GOOGLE_PRODUCT_CATEGORY =
+  "Toys & Games > Novelty & Gag Toys > Slime";
 
 export interface KitAddonInput {
   id: string;
