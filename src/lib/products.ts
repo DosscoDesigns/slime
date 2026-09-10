@@ -191,6 +191,21 @@ export const KIT_TIERS_BY_SLUG: Record<string, KitTier> = Object.fromEntries(
 );
 
 /**
+ * The date the current kit prices took effect (ISO 8601, no time — a date is
+ * what Google's `validFrom` example uses and what we can actually defend).
+ *
+ * Emitted as `offers.validFrom` in the Product JSON-LD, paired with a rolling
+ * `priceValidUntil`. Google lists both as recommended Offer fields and the
+ * Rich Results Test flags a missing `validFrom` as a non-critical issue.
+ *
+ * 🚨 BUMP THIS WHEN YOU REPRICE. It is a public claim about when this price
+ * started; leaving it stale after a price change makes the structured data
+ * assert a price history that did not happen. Last reprice: 0d581a9,
+ * "Reprice kits to match Amazon: 20G $21.99, 40G $37.99, 80G $67.99".
+ */
+export const PRICE_VALID_FROM = "2026-09-03";
+
+/**
  * Google product taxonomy for every kit. Merchant Center will guess a category
  * if this is omitted, and it guesses badly for novelty goods — an explicit
  * value keeps the items in the same bucket competitors bid and rank in.

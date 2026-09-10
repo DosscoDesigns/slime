@@ -1,6 +1,7 @@
 import {
   GOOGLE_PRODUCT_CATEGORY,
   KIT_TIERS,
+  PRICE_VALID_FROM,
   type KitTier,
 } from "@/lib/products";
 import {
@@ -97,13 +98,26 @@ const shippingDetails = {
   },
 };
 
+/**
+ * Mirrors /shipping-returns: 30 days, by mail, and on a change-of-mind return
+ * the buyer arranges and pays their own return shipping.
+ *
+ * `ReturnFeesCustomerResponsibility`, NOT `ReturnShippingFees` — the two are
+ * not synonyms. `ReturnShippingFees` means the merchant charges a return
+ * shipping fee of a stated amount, which is why Google requires
+ * `returnShippingFeesAmount` alongside it and why the Rich Results Test flags
+ * that field as missing when you use it. We charge no such fee; the customer
+ * pays a carrier directly, and we cannot know what that costs. Inventing a
+ * number to silence the warning would be a false claim about our own policy,
+ * so the fix is the accurate enum, which needs no amount.
+ */
 const returnPolicy = {
   "@type": "MerchantReturnPolicy",
   applicableCountry: "US",
   returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
   merchantReturnDays: 30,
   returnMethod: "https://schema.org/ReturnByMail",
-  returnFees: "https://schema.org/ReturnShippingFees",
+  returnFees: "https://schema.org/ReturnFeesCustomerResponsibility",
 };
 
 
@@ -133,6 +147,7 @@ export function productNode(tier: KitTier) {
       url: absoluteUrl(`/kits/${tier.slug}`),
       price: tier.basePrice.toFixed(2),
       priceCurrency: "USD",
+      validFrom: PRICE_VALID_FROM,
       priceValidUntil: priceValidUntil(),
       availability: "https://schema.org/InStock",
       itemCondition: "https://schema.org/NewCondition",
