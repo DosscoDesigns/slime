@@ -11,7 +11,8 @@ import {
  *
  * This page is not optional decoration. Google Merchant Center will not
  * approve product listings without a crawlable returns policy, and our Product
- * JSON-LD already asserts `merchantReturnDays: 30` and `ReturnShippingFees` —
+ * JSON-LD already asserts `merchantReturnDays: 30` and that a change-of-mind
+ * return's shipping is the customer's responsibility —
  * an assertion with nothing behind it is exactly the kind of mismatch that
  * gets an account suspended rather than merely warned.
  *
