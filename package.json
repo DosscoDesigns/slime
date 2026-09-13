@@ -14,13 +14,13 @@
   },
   "dependencies": {
     "@next/third-parties": "^16.3.4",
-    "@stripe/react-stripe-js": "^6.2.0",
-    "@stripe/stripe-js": "^9.3.0",
+    "@stripe/react-stripe-js": "^6.9.0",
+    "@stripe/stripe-js": "^9.16.0",
     "framer-motion": "^12.38.0",
-    "next": "16.2.1",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "stripe": "^22.0.2"
+    "next": "16.3.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "stripe": "^22.6.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -29,7 +29,7 @@
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^5.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.2.1",
+    "eslint-config-next": "16.3.4",
     "husky": "^9.1.7",
     "lint-staged": "^17.5.0",
     "tailwindcss": "^4",
