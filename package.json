@@ -13,13 +13,13 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@next/third-parties": "^16.3.4",
+    "@next/third-parties": "^16.4.0",
     "@stripe/react-stripe-js": "^6.2.0",
     "@stripe/stripe-js": "^9.3.0",
     "framer-motion": "^12.38.0",
-    "next": "16.2.1",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "stripe": "^22.0.2"
   },
   "devDependencies": {
@@ -27,14 +27,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitest/coverage-v8": "^5.0.0",
+    "@vitest/coverage-v8": "^5.0.3",
     "eslint": "^9",
-    "eslint-config-next": "16.2.1",
+    "eslint-config-next": "16.4.0",
     "husky": "^9.1.7",
-    "lint-staged": "^17.5.0",
+    "lint-staged": "^17.6.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.3"
   },
   "packageManager": "pnpm@10.18.2+sha512.9fb969fa749b3ade6035e0f109f0b8a60b5d08a1a87fdf72e337da90dcc93336e2280ca4e44f2358a649b83c17959e9993e777c2080879f3801e6f0d999ad3dd",
   "lint-staged": {
