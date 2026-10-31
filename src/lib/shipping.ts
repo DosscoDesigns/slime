@@ -293,7 +293,21 @@ interface ShippoTransactionResponse {
   tracking_number?: string;
   tracking_url_provider?: string;
   label_url?: string;
-  rate?: { amount: string; provider: string; servicelevel?: { name: string } };
+  /**
+   * The rate's object id — a STRING, not the rate object. The live API never
+   * expands it here, so carrier and cost must come from GET /rates/{id}.
+   * Reading `.amount`/`.provider` off this produced shipping_cost_cents="NaN"
+   * and tracking_carrier="usps" on a UPS label (2026-10-31).
+   */
+  rate?: string;
+}
+
+interface ShippoRateResponse {
+  object_id: string;
+  amount: string;
+  currency: string;
+  provider: string;
+  servicelevel?: { name?: string; token?: string };
 }
 
 /**
@@ -311,6 +325,16 @@ export async function buyLabel(
    */
   orderRef?: string
 ): Promise<PurchasedLabel> {
+  // Read the rate BEFORE buying: it is free, it is the only source of the real
+  // carrier and price, and if it fails nothing has been spent yet.
+  const rate = await shippoGet<ShippoRateResponse>(`/rates/${encodeURIComponent(rateId)}`);
+  const amountCents = toCents(rate.amount);
+  if (!rate.provider || !Number.isFinite(amountCents)) {
+    throw new ShippoError(
+      `rate ${rateId} came back without a usable carrier/amount (provider=${rate.provider}, amount=${rate.amount}) — not buying`
+    );
+  }
+
   const res = await shippo<ShippoTransactionResponse>("/transactions/", {
     rate: rateId,
     label_file_type: LABEL_FILE_TYPE,
@@ -331,9 +355,9 @@ export async function buyLabel(
     trackingNumber: res.tracking_number,
     trackingUrl: res.tracking_url_provider ?? "",
     labelUrl: res.label_url,
-    amountCents: res.rate ? toCents(res.rate.amount) : 0,
-    provider: res.rate?.provider ?? "USPS",
-    service: res.rate?.servicelevel?.name ?? "",
+    amountCents,
+    provider: rate.provider,
+    service: rate.servicelevel?.name ?? "",
   };
 }
 

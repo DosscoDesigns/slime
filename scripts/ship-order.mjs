@@ -165,7 +165,8 @@ if (flag("print")) {
 /* ── record on the order before emailing, so a crash can't lose the tracking ── */
 const upd = new URLSearchParams();
 upd.set("metadata[tracking_number]", label.trackingNumber);
-upd.set("metadata[tracking_carrier]", "usps");
+// The carrier off the rate — this was hardcoded "usps" and mislabelled UPS labels.
+upd.set("metadata[tracking_carrier]", label.provider.toLowerCase());
 upd.set("metadata[shipping_cost_cents]", String(label.amountCents));
 await fetch(`https://api.stripe.com/v1/payment_intents/${piId}`, {
   method: "POST",
