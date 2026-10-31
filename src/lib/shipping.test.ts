@@ -182,26 +182,44 @@ describe("getRates", () => {
 });
 
 describe("buyLabel", () => {
+  // Shapes copied from the live API (UPS label, 2026-10-31). Note `rate` on the
+  // transaction is the rate's id string — the old fixture invented an object
+  // there, which is how NaN cost / "usps" carrier on a UPS label got past tests.
+  const RATE = {
+    object_id: "rate_2day",
+    amount: "14.73",
+    currency: "USD",
+    provider: "UPS",
+    servicelevel: { name: "2nd Day Air®", token: "ups_second_day_air" },
+  };
   const OK = {
     object_id: "txn_1",
     status: "SUCCESS",
-    tracking_number: "9334620845500001363798",
-    tracking_url_provider: "https://tools.usps.com/go/x",
+    tracking_number: "1Z28J5590207109831",
+    tracking_url_provider: "https://www.ups.com/track?tracknum=1Z28J5590207109831",
     label_url: "https://deliver.goshippo.com/abc.zpl?Signature=x",
-    rate: { amount: "6.99", provider: "USPS", servicelevel: { name: "Ground Advantage" } },
+    rate: "rate_2day",
   };
 
   it("requests ZPLII so the label prints on the Zebra", async () => {
-    const spy = stubFetch(json(OK));
-    await buyLabel("rate_ground");
-    expect(JSON.parse(spy.mock.calls[0][1].body).label_file_type).toBe("ZPLII");
+    const spy = stubFetch(json(RATE), json(OK));
+    await buyLabel("rate_2day");
+    expect(JSON.parse(spy.mock.calls[1][1].body).label_file_type).toBe("ZPLII");
   });
 
-  it("returns the tracking number and label url", async () => {
-    stubFetch(json(OK));
-    const label = await buyLabel("rate_ground");
-    expect(label.trackingNumber).toBe("9334620845500001363798");
-    expect(label.amountCents).toBe(699);
+  it("takes carrier and cost from the rate, not the transaction", async () => {
+    stubFetch(json(RATE), json(OK));
+    const label = await buyLabel("rate_2day");
+    expect(label.trackingNumber).toBe("1Z28J5590207109831");
+    expect(label.amountCents).toBe(1473);
+    expect(label.provider).toBe("UPS");
+    expect(label.service).toBe("2nd Day Air®");
+  });
+
+  it("refuses to buy when the rate lookup has no usable amount", async () => {
+    const spy = stubFetch(json({ ...RATE, amount: undefined }));
+    await expect(buyLabel("rate_2day")).rejects.toBeInstanceOf(ShippoError);
+    expect(spy).toHaveBeenCalledTimes(1); // never reached /transactions/
   });
 
   // The real failure seen from the live API: rates quote fine, then USPS
@@ -209,6 +227,7 @@ describe("buyLabel", () => {
   // diagnosable.
   it("surfaces why USPS refused the label", async () => {
     stubFetch(
+      json(RATE),
       json({
         object_id: "txn_2",
         status: "ERROR",
@@ -221,7 +240,7 @@ describe("buyLabel", () => {
   });
 
   it("does not report success when no label came back", async () => {
-    stubFetch(json({ object_id: "t", status: "SUCCESS", tracking_number: "1" }));
+    stubFetch(json(RATE), json({ object_id: "t", status: "SUCCESS", tracking_number: "1" }));
     await expect(buyLabel("rate_ground")).rejects.toBeInstanceOf(ShippoError);
   });
 });
