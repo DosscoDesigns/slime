@@ -34,6 +34,13 @@ export interface ActionResult {
   message: string;
   /** Set on a successful quote so the UI can offer the rate. */
   rates?: Array<{ id: string; label: string; amountCents: number; days: number | null }>;
+  /**
+   * A label was purchased (money spent), even if a later step failed. The UI
+   * uses it to drop the rate picker — including when Stripe wasn't updated and
+   * the order therefore still looks label-less, which is exactly when a second
+   * click would buy a duplicate.
+   */
+  labelBought?: boolean;
 }
 
 /**
@@ -226,6 +233,7 @@ export async function buyAndPrintLabel(
     });
     return {
       ok: false,
+      labelBought: true,
       message: `Label bought (${label.trackingNumber}) but Stripe was not updated. Record it by hand — see logs.`,
     };
   }
@@ -257,13 +265,14 @@ export async function buyAndPrintLabel(
     logError("label bought but not printed", { orderId, ...errorContext(err) });
     return {
       ok: true,
+      labelBought: true,
       message: `Label bought (${label.trackingNumber}) but printing failed: ${
         err instanceof Error ? err.message : "unknown"
       }. Tracking is saved; reprint from Shippo.`,
     };
   }
 
-  return { ok: true, message: `Label bought and printed — ${label.trackingNumber}` };
+  return { ok: true, labelBought: true, message: `Label bought and printed — ${label.trackingNumber}` };
 }
 
 /** Tell the customer it shipped. Outbound mail; deliberately its own button. */
