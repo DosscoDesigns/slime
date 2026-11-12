@@ -29,6 +29,13 @@ registerHooks({
         shortCircuit: true,
       };
     }
+    if (specifier.startsWith("./") && !path.extname(specifier)) {
+      const dir = fileURLToPath(new URL(".", context.parentURL));
+      return {
+        url: pathToFileURL(path.join(dir, `${specifier}.ts`)).href,
+        shortCircuit: true,
+      };
+    }
     return nextResolve(specifier, context);
   },
 });
@@ -137,8 +144,16 @@ for (const r of rates) {
   console.log(`   ${r.serviceToken === rates[0].serviceToken ? "→" : " "} ${r.provider} ${r.service.padEnd(24)} ${money(r.amountCents).padStart(8)}  ${r.estimatedDays ?? "?"}d`);
 }
 const charged = Number(pi.metadata.shipping_cents || 0);
-const best = rates[0];
-console.log(`\n   customer paid ${money(charged)} shipping · cheapest is ${money(best.amountCents)} · margin ${money(charged - best.amountCents)}`);
+const wantService = val("service");
+const best = wantService
+  ? rates.find((r) => r.serviceToken === wantService)
+  : rates[0];
+if (wantService && !best) {
+  console.error(`\n!! no rate matched --service ${wantService}. Available tokens:`);
+  for (const r of rates) console.error(`   ${r.serviceToken}`);
+  process.exit(1);
+}
+console.log(`\n   customer paid ${money(charged)} shipping · chosen is ${money(best.amountCents)} · margin ${money(charged - best.amountCents)}`);
 const noise = messages.filter((m) => m.text).length;
 if (noise) console.log(`   (${noise} carrier messages suppressed — normal, mostly carriers we don't use)`);
 
@@ -165,7 +180,7 @@ if (flag("print")) {
 /* ── record on the order before emailing, so a crash can't lose the tracking ── */
 const upd = new URLSearchParams();
 upd.set("metadata[tracking_number]", label.trackingNumber);
-upd.set("metadata[tracking_carrier]", "usps");
+upd.set("metadata[tracking_carrier]", label.provider.toLowerCase());
 upd.set("metadata[shipping_cost_cents]", String(label.amountCents));
 await fetch(`https://api.stripe.com/v1/payment_intents/${piId}`, {
   method: "POST",

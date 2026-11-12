@@ -182,26 +182,40 @@ describe("getRates", () => {
 });
 
 describe("buyLabel", () => {
+  // A real transaction's `rate` field is the rate's bare object_id, NOT an
+  // expanded object — verified against the live API 2026-11-11, after the
+  // old expanded-shape assumption shipped a label that recorded provider
+  // "USPS" and amountCents NaN for a real UPS purchase. buyLabel() now looks
+  // the id up via a second GET, which these tests must also stub.
   const OK = {
     object_id: "txn_1",
     status: "SUCCESS",
     tracking_number: "9334620845500001363798",
     tracking_url_provider: "https://tools.usps.com/go/x",
     label_url: "https://deliver.goshippo.com/abc.zpl?Signature=x",
-    rate: { amount: "6.99", provider: "USPS", servicelevel: { name: "Ground Advantage" } },
+    rate: "rate_ground",
+  };
+
+  const RATE = {
+    object_id: "rate_ground",
+    amount: "6.99",
+    provider: "USPS",
+    servicelevel: { name: "Ground Advantage" },
+    estimated_days: 3,
   };
 
   it("requests ZPLII so the label prints on the Zebra", async () => {
-    const spy = stubFetch(json(OK));
+    const spy = stubFetch(json(OK), json(RATE));
     await buyLabel("rate_ground");
     expect(JSON.parse(spy.mock.calls[0][1].body).label_file_type).toBe("ZPLII");
   });
 
   it("returns the tracking number and label url", async () => {
-    stubFetch(json(OK));
+    stubFetch(json(OK), json(RATE));
     const label = await buyLabel("rate_ground");
     expect(label.trackingNumber).toBe("9334620845500001363798");
     expect(label.amountCents).toBe(699);
+    expect(label.provider).toBe("USPS");
   });
 
   // The real failure seen from the live API: rates quote fine, then USPS

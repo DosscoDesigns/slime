@@ -293,7 +293,29 @@ interface ShippoTransactionResponse {
   tracking_number?: string;
   tracking_url_provider?: string;
   label_url?: string;
-  rate?: { amount: string; provider: string; servicelevel?: { name: string } };
+  /**
+   * A bare rate object_id, NOT the expanded object the old code here assumed.
+   * Verified against the live API 2026-11-11: a real transaction returns
+   * `"rate": "82bd6fb3…"`, a string. The old type was never actually checked
+   * against live, only written to look plausible — it silently produced
+   * provider "USPS" and amountCents NaN on every live purchase, because
+   * `"abc".provider` is `undefined` rather than a type error. See
+   * fetchRate() below, which is now the source of truth for the bought rate.
+   */
+  rate?: string;
+}
+
+interface ShippoRateResponse {
+  object_id: string;
+  amount: string;
+  provider: string;
+  servicelevel?: { name: string };
+  estimated_days: number | null;
+}
+
+/** Full rate details. The transaction response only gives the rate's id. */
+async function fetchRate(rateId: string): Promise<ShippoRateResponse> {
+  return shippoGet<ShippoRateResponse>(`/rates/${rateId}`);
 }
 
 /**
@@ -326,14 +348,19 @@ export async function buyLabel(
     );
   }
 
+  // The label is already bought at this point, so a failure here must not
+  // throw away a real purchase — fall back to the rate id itself rather than
+  // surfacing an error for what the customer sees only as "label bought".
+  const rate = res.rate ? await fetchRate(res.rate).catch(() => null) : null;
+
   return {
     transactionId: res.object_id,
     trackingNumber: res.tracking_number,
     trackingUrl: res.tracking_url_provider ?? "",
     labelUrl: res.label_url,
-    amountCents: res.rate ? toCents(res.rate.amount) : 0,
-    provider: res.rate?.provider ?? "USPS",
-    service: res.rate?.servicelevel?.name ?? "",
+    amountCents: rate ? toCents(rate.amount) : 0,
+    provider: rate?.provider ?? "USPS",
+    service: rate?.servicelevel?.name ?? "",
   };
 }
 
