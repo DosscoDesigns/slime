@@ -56,10 +56,10 @@ export const AMAZON_LISTINGS: Record<string, { sellerSku: string; fnsku: string 
   ],
   "yellow-40": [{ sellerSku: "84-QJ9K-9V9Q", fnsku: "X005AMY1WR" }],
   "blue-20": [{ sellerSku: "PA-K6OW-HKFY", fnsku: "X005FGMKGR" }],
+  "blue-40": [{ sellerSku: "9L-S3O4-0ETA", fnsku: "X005FGU7H1" }],
   "blue-80": [{ sellerSku: "YN-7IO8-4BFC", fnsku: "X005FH1Q0R" }],
   "yellow-20": [{ sellerSku: "6T-46XP-4240", fnsku: "X005FGQ3B5" }],
-  // Set to FBA 2026-11-20 but no FNSKU from Amazon yet:
-  //   blue-40 9L-S3O4-0ETA, yellow-80 AI-W7N6-9ZSD
+  "yellow-80": [{ sellerSku: "AI-W7N6-9ZSD", fnsku: "X005FGXHAP" }],
   "green-20": [{ sellerSku: "UR-GUFX-I8M3", fnsku: "X0059BBFOL" }],
   "green-40": [{ sellerSku: "E6-64N7-9SR8", fnsku: "X005994761" }],
   "green-80": [{ sellerSku: "GE-NIB9-EFDH", fnsku: "X005993UG9" }],

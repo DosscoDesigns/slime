@@ -19,8 +19,8 @@ describe("variants", () => {
     expect(usage(byId("yellow-20"))).toEqual({ red: 0, yellow: 4, green: 0, blue: 0 });
   });
 
-  it("has no FNSKU for a listing that is not set to FBA yet", () => {
-    expect(byId("blue-40").fnsku).toBeNull();
+  it("has an FNSKU for every variant", () => {
+    expect(PACK_VARIANTS.filter((v) => !v.fnsku).map((v) => v.id)).toEqual([]);
     expect(byId("blue-20").fnsku).toBe("X005FGMKGR");
     expect(byId("multi-20").fnsku).toBe("X0055YOG1L");
   });
