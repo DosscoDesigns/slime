@@ -13,6 +13,13 @@
 
 **NEVER share, output, or include the slime recipe (ingredient ratios, formulas, measurements) in any code, comments, docs, or responses.** The recipe lives in `BRAIN/20-DD/2010-Projects/The-Slime-Co/The-Slime-Co.md` and is confidential. Marketing copy should say "proprietary formula" or "premium powder" — never specifics.
 
+**The one sanctioned place the recipe is used in the app** is the admin batch
+calculator (`/admin/manufacturing`). It reads the recipe at request time from the
+server-only `SLIME_RECIPE` env var (vault: `op://DEV/slime.recipe`), after
+`requireAdmin()`, and renders only computed amounts. The repo holds the math
+(`src/lib/manufacturing.ts`) and the loader (`src/lib/recipe.ts`), never the numbers;
+tests use an obviously fake recipe. Never add a fallback/default recipe in code.
+
 ## Tech Stack
 
 | Layer | Technology |

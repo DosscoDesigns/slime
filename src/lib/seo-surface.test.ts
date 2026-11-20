@@ -27,6 +27,7 @@ const INTENTIONALLY_UNLISTED = new Set([
   "/admin", // noindex + login + customer PII
   "/admin/login",
   "/admin/coupons",
+  "/admin/manufacturing", // noindex admin; renders recipe-derived amounts
   "/admin/orders/[id]",
 ]);
 

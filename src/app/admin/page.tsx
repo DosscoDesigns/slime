@@ -79,6 +79,9 @@ export default async function AdminOrders({
           </p>
         </div>
         <nav className="flex items-center gap-4 text-sm">
+          <Link href="/admin/manufacturing" className="text-zinc-400 hover:text-lime-400">
+            Manufacturing
+          </Link>
           <Link href="/admin/coupons" className="text-zinc-400 hover:text-lime-400">
             Coupons
           </Link>
