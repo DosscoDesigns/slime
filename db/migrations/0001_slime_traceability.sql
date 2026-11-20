@@ -55,7 +55,8 @@ create table slime.pack_components (
 
 create index pack_components_bulk_idx on slime.pack_components (bulk_lot_id);
 
-create view slime.bulk_lot_balances as
+-- security_invoker: the view reads with the caller's rights, so it can't see past RLS.
+create view slime.bulk_lot_balances with (security_invoker = true) as
 select b.*,
        coalesce(sum(c.pouches_used), 0)::int                    as pouches_used,
        (b.pouches_filled - coalesce(sum(c.pouches_used), 0))::int as pouches_remaining
@@ -74,11 +75,17 @@ begin
   if exists (select 1 from pg_roles where rolname = 'anon') then
     execute 'revoke all on all tables in schema slime from anon, authenticated';
   end if;
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    execute 'revoke all on all tables in schema slime from service_role';
+  end if;
 end $$;
 
--- Create the role first (dd): create role slime_app login password '<from 1Password>';
+-- Create the role first: create role slime_app login password '<from 1Password>';
 grant usage on schema slime to slime_app;
 grant select, insert, update, delete on all tables in schema slime to slime_app;
 grant usage, select on all sequences in schema slime to slime_app;
--- RLS is enabled with no policies, so give the app role an explicit pass.
-alter role slime_app bypassrls;
+-- RLS policies for the app role only; every other role has no policy and so no rows.
+-- (Not bypassrls: Supabase's postgres role is not a superuser and can't grant it.)
+create policy slime_app_all on slime.bulk_lots       for all to slime_app using (true) with check (true);
+create policy slime_app_all on slime.pack_lots       for all to slime_app using (true) with check (true);
+create policy slime_app_all on slime.pack_components for all to slime_app using (true) with check (true);
