@@ -245,16 +245,21 @@ metadata are baked at build time, so a change needs a redeploy to take effect.
 
 ## Manufacturing & traceability (admin)
 
-`/admin/manufacturing` (batch calculator → **Log batch**), `/admin/packaging` (planner + live
-FBA stock → **Record & print**), `/admin/lots` (trace), `/admin/labels/[MP-lot]` (FBA labels).
+Flow: **Mix** (`/admin/manufacturing`: calculator → log the pouches filled) → **Package**
+(`/admin/packaging?batch=YYMMDD-RUN`, defaults to the batch just logged) → **Labels**
+(`/admin/labels/<packing run #>`). **Batches** (`/admin/batches`) lists pouches on hand per
+mixing run, the packed history, and trace search.
 
-- **Lots:** bulk `YYMMDD-CC-RUN` (codes RD/YL/GR/BL; one lot per color per mixing run) →
-  pack `MP-YYMMDD-RUN` (one row per FNSKU per packing run). `slime.pack_components` records
-  which bulk lots each pack lot drew from — **the lot follows the material**. Pouches are drawn
-  oldest-lot-first inside a locked transaction; a short color rejects the whole run.
-- **DB:** `slime` schema in DD's Supabase (migration `db/migrations/`, applied by `dd`), reached
-  only as role `slime_app` via `SLIME_DATABASE_URL`. **Never expose `slime` through the Supabase
-  Data API** — DD's admin bundle ships a service key.
+- **Bulk lot** `YYMMDD-CC-RUN` (RD/YL/GR/BL), one per color per mixing run; the batch is the run.
+  On hand only ever comes from logged batches — there is no manual on-hand entry.
+- **Label code:** a single-color kit filled from one bulk lot prints that lot's code. Multis,
+  and kits spanning lots, print `MP-YYMMDD-NN` (own counter). One MP code = one exact set of
+  lots; `slime.pack_components` records it. `packKits()` in `src/lib/lots.ts` fills each kit
+  from one lot where it can, big single-color kits first; the planner previews with the same
+  function the server records with, inside a transaction with the bulk lots locked.
+- **DB:** `slime` schema in DD's Supabase (migrations in `db/migrations/`, applied by `dd`),
+  reached only as role `slime_app` via `SLIME_DATABASE_URL`. **Never expose `slime` through the
+  Supabase Data API** — DD's admin bundle ships a service key.
 - **Kits:** 1 pouch ≈ 5 gal → 20/40/80 gal = 4/8/16 pouches; multi = even split across colors.
   Variant → seller SKU/FNSKU map is `AMAZON_LISTINGS` in `src/lib/packaging.ts`; a new FBA
   listing (e.g. Blue) must be added there before it can be packed.
