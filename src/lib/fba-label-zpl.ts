@@ -39,14 +39,19 @@ export function fbaLabelZpl({
   return [
     "^XA",
     "^CI0",
+    // Find each label by the gap between labels, and print direct thermal (no
+    // ribbon). Without ^MNW a printer left in continuous mode drifts a little
+    // more on every label until the barcode runs off the edge.
+    "^MNW",
+    "^MTD",
     `^PW${W}`,
     `^LL${H}`,
     "^LH0,0",
-    `^FO${barX},16^BY${MODULE},3,78^BCN,78,N,N,N^FD${fnsku}^FS`,
+    `^FO${barX},24^BY${MODULE},3,70^BCN,70,N,N,N^FD${fnsku}^FS`,
     `^FO0,100^FB${W},1,0,C^A0N,24,24^FD${fnsku}^FS`,
-    `^FO18,130^FB${W - 36},2,2,L^A0N,20,20^FD${shortTitle}^FS`,
-    `^FO18,214^A0N,22,22^FDNew^FS`,
-    `^FO18,214^FB${W - 36},1,0,R^A0N,22,22^FDLot ${clean(lotCode)}^FS`,
+    `^FO20,130^FB${W - 40},2,2,L^A0N,20,20^FD${shortTitle}^FS`,
+    `^FO20,206^A0N,22,22^FDNew^FS`,
+    `^FO20,206^FB${W - 40},1,0,R^A0N,22,22^FDLot ${clean(lotCode)}^FS`,
     `^PQ${copies},0,1,N`,
     "^XZ",
   ].join("\n");

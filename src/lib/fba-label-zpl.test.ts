@@ -12,6 +12,8 @@ describe("fbaLabelZpl", () => {
   it("sizes the label 2.25x1.25 in at 203 dpi and prints the count asked", () => {
     const z = fbaLabelZpl(base);
     expect(z).toMatch(/\^PW457\n\^LL254/);
+    expect(z).toContain("^MNW"); // gap sensing, so labels don't drift
+    expect(z).toContain("^MTD");
     expect(z).toContain("^PQ4,0,1,N");
     expect(z.match(/\^BC/g)).toHaveLength(1); // the FNSKU is the only barcode
     expect(z).toContain("^FDX0055YOG1L^FS");
