@@ -20,7 +20,8 @@ describe("variants", () => {
   });
 
   it("has no FNSKU for a listing that is not set to FBA yet", () => {
-    expect(byId("blue-20").fnsku).toBeNull();
+    expect(byId("blue-40").fnsku).toBeNull();
+    expect(byId("blue-20").fnsku).toBe("X005FGMKGR");
     expect(byId("multi-20").fnsku).toBe("X0055YOG1L");
   });
 });
@@ -44,19 +45,43 @@ describe("remaining / feasible", () => {
 });
 
 describe("suggestPlans", () => {
-  it("every suggestion is feasible and leaves less than one kit of any color", () => {
-    const onHand = { red: 37, yellow: 41, green: 36, blue: 29 };
+  const onHand = { red: 37, yellow: 41, green: 36, blue: 29 };
+
+  it("every suggestion is feasible, labelled, and never an 80", () => {
     for (const o of suggestPlans(onHand)) {
       expect(feasible(onHand, o.plan)).toBe(true);
       expect(remaining(onHand, o.plan)).toEqual(o.leftover);
-      for (const c of ["red", "yellow", "green", "blue"] as const) {
-        expect(o.leftover[c]).toBeLessThan(4);
+      for (const id of Object.keys(o.plan)) {
+        const v = byId(id);
+        expect(v.gallons).not.toBe(80);
+        expect(v.fnsku).toBeTruthy();
       }
     }
   });
 
+  it("evening out stock leaves no kit's worth unused and fills the thinnest listing first", () => {
+    const [even] = suggestPlans(onHand, { "multi-20": 26, "multi-40": 10 });
+    // A multi-20 takes one of each color, so nothing should be stranded while all four remain.
+    expect(Math.min(...Object.values(even.leftover))).toBe(0);
+    expect(even.plan["multi-20"] ?? 0).toBeLessThan(even.plan["red-20"] ?? 0);
+  });
+
+  it("puts about 80% of a color's pouches into 40-gal kits when it has a 40 listing", () => {
+    const o = suggestPlans(onHand).find((x) => x.label.startsWith("~80%"))!;
+    // Red has a 40-gal single; blue only reaches 40s through the multi.
+    const pouches = (g: number) =>
+      Object.entries(o.plan)
+        .filter(([id]) => byId(id).gallons === g)
+        .reduce((s, [id, n]) => s + n * usage(byId(id)).red, 0);
+    const share = pouches(40) / (pouches(40) + pouches(20));
+    expect(share).toBeGreaterThan(0.7);
+    expect(share).toBeLessThan(0.9);
+  });
+
   it("maxes out the multi kit by the scarcest color", () => {
-    const [twenty] = suggestPlans({ red: 12, yellow: 12, green: 12, blue: 5 });
+    const twenty = suggestPlans({ red: 12, yellow: 12, green: 12, blue: 5 }).find((x) =>
+      x.label.startsWith("Max 20")
+    )!;
     expect(twenty.plan["multi-20"]).toBe(5);
     expect(twenty.plan["red-20"]).toBe(1);
   });

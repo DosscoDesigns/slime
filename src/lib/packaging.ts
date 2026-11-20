@@ -55,6 +55,7 @@ export const AMAZON_LISTINGS: Record<string, { sellerSku: string; fnsku: string 
     { sellerSku: "B5-BIQT-3N9I", fnsku: "X005F474CT" },
   ],
   "yellow-40": [{ sellerSku: "84-QJ9K-9V9Q", fnsku: "X005AMY1WR" }],
+  "blue-20": [{ sellerSku: "PA-K6OW-HKFY", fnsku: "X005FGMKGR" }],
   "green-20": [{ sellerSku: "UR-GUFX-I8M3", fnsku: "X0059BBFOL" }],
   "green-40": [{ sellerSku: "E6-64N7-9SR8", fnsku: "X005994761" }],
   "green-80": [{ sellerSku: "GE-NIB9-EFDH", fnsku: "X005993UG9" }],
@@ -111,6 +112,7 @@ function packSingles(left: Counts, plan: Plan, sizes: readonly (20 | 40 | 80)[])
   for (const c of PACK_COLORS) {
     for (const g of sizes) {
       const v = PACK_VARIANTS.find((x) => x.color === c && x.gallons === g)!;
+      if (!v.fnsku) continue; // can't be labelled, so don't suggest it
       const n = pouchesPerKit(v);
       const qty = Math.floor(left[c] / n);
       if (qty > 0) {
@@ -121,30 +123,78 @@ function packSingles(left: Counts, plan: Plan, sizes: readonly (20 | 40 | 80)[])
   }
 }
 
+/**
+ * Add kits one at a time to whichever variant has the fewest units (FBA stock
+ * plus what's already planned), until nothing else fits. `cap` limits the
+ * pouches of each color this pass may use.
+ */
+function levelUp(
+  left: Counts,
+  plan: Plan,
+  variants: PackVariant[],
+  have: Record<string, number>,
+  cap: Counts = left
+): void {
+  const budget = { ...cap };
+  for (;;) {
+    // A kit fits if the pouches exist and taking it lands nearer the cap than
+    // stopping short would (kits come in 8-pouch steps, so "≤ cap" undershoots).
+    const fits = variants.filter((v) =>
+      PACK_COLORS.every((c) => {
+        const u = usage(v)[c];
+        return u === 0 || (u <= left[c] && budget[c] * 2 >= u);
+      })
+    );
+    if (fits.length === 0) return;
+    const units = (v: PackVariant) => (have[v.id] ?? 0) + (plan[v.id] ?? 0);
+    const v = fits.reduce((best, x) => (units(x) < units(best) ? x : best));
+    plan[v.id] = (plan[v.id] ?? 0) + 1;
+    for (const c of PACK_COLORS) {
+      left[c] -= usage(v)[c];
+      budget[c] -= usage(v)[c];
+    }
+  }
+}
+
 export interface PlanOption {
   label: string;
   plan: Plan;
   leftover: Counts;
 }
 
+const labelled = (g: number) => PACK_VARIANTS.filter((v) => v.gallons === g && v.fnsku);
+
 /**
- * Starting points, not answers: each fills multi-color kits first (one size),
- * then packs what's left of each color into single-color kits.
+ * Starting points, not answers. No 80-gal kits: they're packed on purpose,
+ * not suggested. `have` is FBA units per variant (stock + inbound), used to
+ * level up the thinnest listings first; without it every listing counts as 0.
  */
-export function suggestPlans(onHand: Counts): PlanOption[] {
+export function suggestPlans(onHand: Counts, have: Record<string, number> = {}): PlanOption[] {
   const options: PlanOption[] = [];
-  for (const g of GALLONS) {
+
+  {
+    const plan: Plan = {};
+    const left = { ...onHand };
+    levelUp(left, plan, [...labelled(20), ...labelled(40)], have);
+    options.push({ label: "Even out stock (20 & 40 gal)", plan, leftover: left });
+  }
+  {
+    const plan: Plan = {};
+    const left = { ...onHand };
+    const cap = Object.fromEntries(PACK_COLORS.map((c) => [c, Math.floor(onHand[c] * 0.8)])) as Counts;
+    levelUp(left, plan, labelled(40), have, cap);
+    levelUp(left, plan, labelled(20), have);
+    levelUp(left, plan, labelled(40), have); // a color with no 20 listing (yellow) still gets packed
+    options.push({ label: "~80% 40 gal, rest 20 gal", plan, leftover: left });
+  }
+  for (const g of [20, 40] as const) {
     const multi = PACK_VARIANTS.find((v) => v.color === null && v.gallons === g)!;
     const each = pouchesPerKit(multi) / PACK_COLORS.length;
     const qty = Math.floor(Math.min(...PACK_COLORS.map((c) => onHand[c])) / each);
     const plan: Plan = qty > 0 ? { [multi.id]: qty } : {};
     const left = remaining(onHand, plan);
-    packSingles(left, plan, [20]);
-    options.push({ label: `Max ${g} gal multi, rest as 20 gal singles`, plan, leftover: left });
+    packSingles(left, plan, [20, 40]); // 40 only where a color has no 20 listing
+    options.push({ label: `Max ${g} gal multi, rest as singles`, plan, leftover: left });
   }
-  const singles: Plan = {};
-  const left = { ...onHand };
-  packSingles(left, singles, [80, 40, 20]);
-  options.push({ label: "Single-color only, largest first", plan: singles, leftover: left });
   return options;
 }

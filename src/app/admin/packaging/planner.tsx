@@ -103,7 +103,14 @@ export default function Planner({
     ZERO
   );
   const left = remaining(onHand, plan);
-  const options = suggestPlans(onHand);
+  // FBA units per variant (all its SKUs, inbound included), so plans fill the thinnest listings first.
+  const have: Record<string, number> = Object.fromEntries(
+    PACK_VARIANTS.map((v) => [
+      v.id,
+      (AMAZON_LISTINGS[v.id] ?? []).reduce((s, l) => s + (stock?.[l.fnsku]?.total ?? 0), 0),
+    ])
+  );
+  const options = suggestPlans(onHand, have);
   const over = PACK_COLORS.filter((c) => left[c] < 0);
   const kits = PACK_VARIANTS.reduce((s, v) => s + (plan[v.id] ?? 0), 0);
   const unlabelled = PACK_VARIANTS.filter((v) => (plan[v.id] ?? 0) > 0 && !v.fnsku);
@@ -163,37 +170,6 @@ export default function Planner({
             })}
           </div>
         </div>
-        <div className="border-t border-zinc-800 px-4 py-3 text-sm">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-            <span className="font-semibold">{kits} kits</span>
-            {PACK_COLORS.map((c) => (
-              <span key={c} className={left[c] < 0 ? "font-semibold text-red-400" : "text-zinc-400"}>
-                {COLOR_LABEL[c]} left: {left[c]}
-              </span>
-            ))}
-            {kits > 0 ? (
-              <button
-                type="button"
-                onClick={() => setPlan({})}
-                className="ml-auto text-zinc-500 hover:text-zinc-300"
-              >
-                Clear
-              </button>
-            ) : null}
-          </div>
-          {over.length > 0 ? (
-            <p className="mt-2 text-red-300">
-              Short on {over.map((c) => COLOR_LABEL[c].toLowerCase()).join(", ")}: this plan needs
-              more pouches than the batches you picked.
-            </p>
-          ) : null}
-          {unlabelled.length > 0 ? (
-            <p className="mt-2 text-amber-200">
-              No FNSKU yet for {unlabelled.map((v) => v.name).join(", ")}. Set the listing to FBA
-              in Seller Central before packing these for Amazon.
-            </p>
-          ) : null}
-        </div>
       </section>
 
       {hasStock ? (
@@ -223,6 +199,47 @@ export default function Planner({
           </div>
         </section>
       ) : null}
+
+      <div className="sticky top-[82px] z-10 rounded-lg border border-zinc-700 bg-[#0a0a0a]/95 px-4 py-3 text-sm shadow-lg shadow-black/40 backdrop-blur">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <span className="font-semibold">{kits} kits</span>
+          {PACK_COLORS.map((c) => (
+            <span key={c} className="flex items-center gap-2">
+              <span className={`h-3 w-3 rounded-full ${COLOR_DOT[c]}`} />
+              <span className="text-zinc-400">{COLOR_LABEL[c]}</span>
+              <span
+                className={`min-w-8 text-lg font-bold tabular-nums ${
+                  left[c] < 0 ? "text-red-400" : left[c] === 0 ? "text-zinc-500" : "text-zinc-100"
+                }`}
+              >
+                {left[c]}
+              </span>
+            </span>
+          ))}
+          <span className="text-xs text-zinc-500">pouches left</span>
+          {kits > 0 ? (
+            <button
+              type="button"
+              onClick={() => setPlan({})}
+              className="ml-auto text-zinc-500 hover:text-zinc-300"
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+        {over.length > 0 ? (
+          <p className="mt-2 text-red-300">
+            Short on {over.map((c) => COLOR_LABEL[c].toLowerCase()).join(", ")}: this plan needs
+            more pouches than the batches you picked.
+          </p>
+        ) : null}
+        {unlabelled.length > 0 ? (
+          <p className="mt-2 text-amber-200">
+            No FNSKU yet for {unlabelled.map((v) => v.name).join(", ")}. Set the listing to FBA
+            in Seller Central before packing these for Amazon.
+          </p>
+        ) : null}
+      </div>
 
       <section className="overflow-x-auto rounded-lg border border-zinc-800">
         <table className="w-full text-sm">

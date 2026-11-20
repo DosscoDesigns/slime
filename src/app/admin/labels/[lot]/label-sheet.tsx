@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useState } from "react";
+import { printFbaLabels, type PrintState } from "../../lots-actions";
 
 export interface LabelItem {
   key: string;
@@ -28,9 +29,11 @@ const PAGE_CSS = `
 `;
 
 export default function LabelSheet({
+  runNo,
   packedOn,
   items,
 }: {
+  runNo: number;
   packedOn: string;
   items: LabelItem[];
 }) {
@@ -38,6 +41,10 @@ export default function LabelSheet({
     Object.fromEntries(items.map((i) => [i.key, i.kits]))
   );
   const total = items.reduce((s, i) => s + (counts[i.key] ?? 0), 0);
+  const [zebra, sendToZebra, sending] = useActionState<PrintState, FormData>(printFbaLabels, {
+    error: null,
+    printed: null,
+  });
 
   return (
     <>
@@ -70,14 +77,35 @@ export default function LabelSheet({
               </label>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            disabled={total === 0}
-            className="mt-4 rounded bg-lime-400 px-4 py-1.5 text-sm font-semibold text-black hover:bg-lime-300 disabled:opacity-40"
-          >
-            Print {total} labels
-          </button>
+          <form action={sendToZebra} className="mt-4 flex flex-wrap items-center gap-3">
+            <input type="hidden" name="runNo" value={runNo} />
+            {items.map((i) => (
+              <input key={i.key} type="hidden" name={`count_${i.key}`} value={counts[i.key] ?? 0} />
+            ))}
+            <button
+              type="submit"
+              disabled={total === 0 || sending}
+              className="rounded bg-lime-400 px-4 py-1.5 text-sm font-semibold text-black hover:bg-lime-300 disabled:opacity-40"
+            >
+              {sending ? "Sending…" : `Print ${total} on Zebra`}
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              disabled={total === 0}
+              className="rounded border border-zinc-700 px-4 py-1.5 text-sm hover:border-lime-400 disabled:opacity-40"
+            >
+              Browser print (DYMO)
+            </button>
+          </form>
+          {zebra.printed ? (
+            <p className="mt-2 text-sm text-lime-300">Sent {zebra.printed} labels to the Zebra.</p>
+          ) : null}
+          {zebra.error ? <p className="mt-2 text-sm text-red-300">{zebra.error}</p> : null}
+          <p className="mt-2 text-xs text-zinc-500">
+            Zebra needs 2¼×1¼ labels loaded (calibrate after a roll change). Don&apos;t click twice: a
+            slow printer can still be printing the first job.
+          </p>
           <p className="mt-6 text-xs text-zinc-500">Preview:</p>
         </header>
 

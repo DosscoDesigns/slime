@@ -3,7 +3,11 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { isSignedIn } from "@/lib/admin-session";
-import { createBulkRun, createPackRun } from "@/lib/traceability";
+import { createBulkRun, createPackRun, listPackLots } from "@/lib/traceability";
+import { printZpl } from "@/lib/print";
+import { fbaLabelZpl } from "@/lib/fba-label-zpl";
+import { labelTitle } from "@/lib/fba-label";
+import { logError, errorContext } from "@/lib/logger";
 import { AllocationError, yymmdd } from "@/lib/lots";
 import { PACK_VARIANTS, type Plan } from "@/lib/packaging";
 import { COLOR_ORDER } from "@/lib/manufacturing";
@@ -101,4 +105,44 @@ export async function recordPackRun(_prev: ActionState, form: FormData): Promise
   revalidatePath("/admin/batches");
   revalidatePath("/admin/packaging");
   redirect(`/admin/labels/${runNo}`);
+}
+
+export interface PrintState {
+  error: string | null;
+  printed: number | null;
+}
+
+/**
+ * Send a packing run's FBA labels to the Zebra (GX420d, the print worker's
+ * "4x2" printer) as one job. Counts come from the form, but every label's
+ * content comes from the database row, never the client.
+ */
+export async function printFbaLabels(_prev: PrintState, form: FormData): Promise<PrintState> {
+  await guard();
+  try {
+    const runNo = posInt(form.get("runNo"), "Packing run");
+    const rows = await listPackLots(runNo);
+    const jobs: string[] = [];
+    let total = 0;
+    for (const r of rows) {
+      const n = Math.floor(Number(form.get(`count_${r.id}`)) || 0);
+      if (n <= 0 || !r.fnsku) continue;
+      const v = PACK_VARIANTS.find((x) => x.id === r.variantId);
+      jobs.push(
+        fbaLabelZpl({
+          fnsku: r.fnsku,
+          title: labelTitle(v?.title ?? r.variantId),
+          lotCode: r.lotCode,
+          copies: n,
+        })
+      );
+      total += n;
+    }
+    if (total === 0) return { error: "Nothing to print.", printed: null };
+    await printZpl({ zpl: jobs.join("\n"), printer: "4x2" });
+    return { error: null, printed: total };
+  } catch (e) {
+    logError("admin.fba_label_print_failed", errorContext(e));
+    return { error: e instanceof Error ? e.message : String(e), printed: null };
+  }
 }

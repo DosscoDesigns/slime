@@ -33,5 +33,5 @@ export default async function Labels({ params }: { params: Promise<{ lot: string
       };
     });
 
-  return <LabelSheet packedOn={rows[0].packedOn} items={items} />;
+  return <LabelSheet runNo={Number(lot)} packedOn={rows[0].packedOn} items={items} />;
 }
