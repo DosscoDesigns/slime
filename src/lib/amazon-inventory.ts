@@ -8,8 +8,8 @@
  */
 import { AMAZON_LISTINGS } from "@/lib/packaging";
 
-const MARKETPLACE_US = "ATVPDKIKX0DER";
-const SP_API = "https://sellingpartnerapi-na.amazon.com";
+export const MARKETPLACE_US = "ATVPDKIKX0DER";
+export const SP_API = "https://sellingpartnerapi-na.amazon.com";
 
 export interface FbaStock {
   sellerSku: string;
@@ -39,7 +39,7 @@ export function amazonConfigured(): boolean {
 
 let token: { value: string; expiresAt: number } | null = null;
 
-async function accessToken(): Promise<string> {
+export async function accessToken(): Promise<string> {
   if (typeof window !== "undefined") {
     throw new AmazonConfigError("amazon-inventory.ts was imported into browser code");
   }

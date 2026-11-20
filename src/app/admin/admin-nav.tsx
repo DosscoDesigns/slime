@@ -7,7 +7,7 @@ import { signOut } from "./actions";
 const MFG = [
   { href: "/admin/manufacturing", label: "Mix" },
   { href: "/admin/batches", label: "Batches" },
-  { href: "/admin/packaging", label: "Package" },
+  { href: "/admin/packaging", label: "Packages" },
 ];
 const MFG_PATHS = [...MFG.map((m) => m.href), "/admin/labels"];
 

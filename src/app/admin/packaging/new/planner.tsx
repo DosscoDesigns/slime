@@ -14,7 +14,7 @@ import {
 import type { FbaStock } from "@/lib/amazon-inventory";
 import type { SlimeColor } from "@/lib/products";
 import { packKits, AllocationError, type Balance, type KitGroup } from "@/lib/lots";
-import { recordPackRun, type ActionState } from "../lots-actions";
+import { recordPackRun, type ActionState } from "../../lots-actions";
 
 export interface PlannerBatch {
   key: string;

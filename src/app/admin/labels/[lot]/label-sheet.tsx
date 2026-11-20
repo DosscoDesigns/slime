@@ -1,7 +1,32 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { printFbaLabels, type PrintState } from "../../lots-actions";
+import Link from "next/link";
+import { printFbaLabels, fbaLabelZplFor, type PrintState } from "../../lots-actions";
+
+// Zebra Browser Print: Zebra's free helper app on the Mac, which hands ZPL to a
+// USB (or network) Zebra. Chrome lets an https page talk to it on loopback.
+const BROWSER_PRINT = "http://127.0.0.1:9100";
+
+async function printViaBrowserPrint(zpl: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${BROWSER_PRINT}/default?type=printer`);
+  } catch {
+    throw new Error(
+      "Couldn't reach Zebra Browser Print on this computer. Install it from zebra.com, make sure it's running, and use Chrome."
+    );
+  }
+  const text = res.ok ? await res.text() : "";
+  if (!text.trim()) {
+    throw new Error("Zebra Browser Print has no default printer. Open it and choose the Zebra.");
+  }
+  const write = await fetch(`${BROWSER_PRINT}/write`, {
+    method: "POST",
+    body: JSON.stringify({ device: JSON.parse(text), data: zpl }),
+  });
+  if (!write.ok) throw new Error(`Zebra Browser Print refused the job (${write.status}).`);
+}
 
 export interface LabelItem {
   key: string;
@@ -45,14 +70,57 @@ export default function LabelSheet({
     error: null,
     printed: null,
   });
+  const [local, setLocal] = useState<{ busy: boolean; msg: string | null; error: string | null }>({
+    busy: false,
+    msg: null,
+    error: null,
+  });
+
+  const zplForm = () => {
+    const f = new FormData();
+    f.set("runNo", String(runNo));
+    for (const i of items) f.set(`count_${i.key}`, String(counts[i.key] ?? 0));
+    return f;
+  };
+  const getZpl = async () => {
+    const r = await fbaLabelZplFor(zplForm());
+    if ("error" in r) throw new Error(r.error);
+    return r;
+  };
+  const printHere = async () => {
+    setLocal({ busy: true, msg: null, error: null });
+    try {
+      const { zpl, total: n } = await getZpl();
+      await printViaBrowserPrint(zpl);
+      setLocal({ busy: false, msg: `Sent ${n} labels to this computer's Zebra.`, error: null });
+    } catch (e) {
+      setLocal({ busy: false, msg: null, error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+  const download = async () => {
+    try {
+      const { zpl } = await getZpl();
+      const url = URL.createObjectURL(new Blob([zpl], { type: "application/octet-stream" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `fba-labels-package-${runNo}.zpl`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setLocal({ busy: false, msg: null, error: e instanceof Error ? e.message : String(e) });
+    }
+  };
 
   return (
     <>
       <style>{PAGE_CSS}</style>
       <main className="mx-auto max-w-4xl px-5 py-10 print:m-0 print:max-w-none print:p-0">
         <header className="mb-6 print:hidden">
-          <h1 className="text-2xl font-extrabold tracking-tight">
-            FBA labels · packed {packedOn}
+          <Link href="/admin/packaging" className="text-sm text-zinc-500 hover:text-lime-400">
+            ← Packages
+          </Link>
+          <h1 className="mt-1 text-2xl font-extrabold tracking-tight">
+            Package #{runNo} labels · packed {packedOn}
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
             One label per kit by default; change a count to reprint. In the print
@@ -77,17 +145,22 @@ export default function LabelSheet({
               </label>
             ))}
           </div>
-          <form action={sendToZebra} className="mt-4 flex flex-wrap items-center gap-3">
-            <input type="hidden" name="runNo" value={runNo} />
-            {items.map((i) => (
-              <input key={i.key} type="hidden" name={`count_${i.key}`} value={counts[i.key] ?? 0} />
-            ))}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
-              type="submit"
-              disabled={total === 0 || sending}
+              type="button"
+              onClick={printHere}
+              disabled={total === 0 || local.busy}
               className="rounded bg-lime-400 px-4 py-1.5 text-sm font-semibold text-black hover:bg-lime-300 disabled:opacity-40"
             >
-              {sending ? "Sending…" : `Print ${total} on Zebra`}
+              {local.busy ? "Sending…" : `Print ${total} on this computer's Zebra`}
+            </button>
+            <button
+              type="button"
+              onClick={download}
+              disabled={total === 0}
+              className="rounded border border-zinc-700 px-4 py-1.5 text-sm hover:border-lime-400 disabled:opacity-40"
+            >
+              Download ZPL
             </button>
             <button
               type="button"
@@ -97,14 +170,29 @@ export default function LabelSheet({
             >
               Browser print (DYMO)
             </button>
-          </form>
-          {zebra.printed ? (
-            <p className="mt-2 text-sm text-lime-300">Sent {zebra.printed} labels to the Zebra.</p>
+            <form action={sendToZebra}>
+              <input type="hidden" name="runNo" value={runNo} />
+              {items.map((i) => (
+                <input key={i.key} type="hidden" name={`count_${i.key}`} value={counts[i.key] ?? 0} />
+              ))}
+              <button
+                type="submit"
+                disabled={total === 0 || sending}
+                className="rounded border border-zinc-800 px-4 py-1.5 text-sm text-zinc-400 hover:border-lime-400 disabled:opacity-40"
+              >
+                {sending ? "Sending…" : "Office Zebra (network)"}
+              </button>
+            </form>
+          </div>
+          {local.msg || zebra.printed ? (
+            <p className="mt-2 text-sm text-lime-300">{local.msg ?? `Sent ${zebra.printed} labels to the office Zebra.`}</p>
           ) : null}
-          {zebra.error ? <p className="mt-2 text-sm text-red-300">{zebra.error}</p> : null}
+          {local.error || zebra.error ? (
+            <p className="mt-2 text-sm text-red-300">{local.error ?? zebra.error}</p>
+          ) : null}
           <p className="mt-2 text-xs text-zinc-500">
-            Zebra needs 2¼×1¼ labels loaded (calibrate after a roll change). Don&apos;t click twice: a
-            slow printer can still be printing the first job.
+            Zebra: load 2¼×1¼ labels and calibrate after a roll change. Don&apos;t click twice: a slow
+            printer can still be printing the first job.
           </p>
           <p className="mt-6 text-xs text-zinc-500">Preview:</p>
         </header>

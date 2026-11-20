@@ -40,7 +40,7 @@ export default async function Batches({ searchParams }: { searchParams: Promise<
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight">Batches</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Pouches on hand from each mixing run. Search a batch or label code to trace it.
+            Pouches on hand from each mixing run. Search a batch or label code to see which packages hold it.
           </p>
         </div>
         <form method="get" className="flex gap-2 text-sm">
@@ -105,7 +105,7 @@ export default async function Batches({ searchParams }: { searchParams: Promise<
                     <td className="px-4 py-2 text-right">
                       {left ? (
                         <Link
-                          href={`/admin/packaging?batch=${b.key}`}
+                          href={`/admin/packaging/new?batch=${b.key}`}
                           className="text-lime-400 hover:text-lime-300"
                         >
                           Package →
@@ -125,44 +125,46 @@ export default async function Batches({ searchParams }: { searchParams: Promise<
         </p>
       </section>
 
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-zinc-300">Packed</h2>
-        {runs.length === 0 ? (
-          <p className="text-sm text-zinc-500">Nothing packed{needle ? " matches" : " yet"}.</p>
-        ) : (
-          <div className="space-y-3">
-            {runs.map((run) => {
-              const rows = packMatches.filter((p) => p.runNo === run);
-              return (
-                <div key={run} className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="text-sm font-semibold text-zinc-300">Packed {rows[0].packedOn}</span>
-                    <Link
-                      href={`/admin/labels/${run}`}
-                      className="ml-auto text-sm text-zinc-400 hover:text-lime-400"
-                    >
-                      Labels →
-                    </Link>
+      {needle ? (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold text-zinc-300">Packages containing it</h2>
+          {runs.length === 0 ? (
+            <p className="text-sm text-zinc-500">Nothing packed{needle ? " matches" : " yet"}.</p>
+          ) : (
+            <div className="space-y-3">
+              {runs.map((run) => {
+                const rows = packMatches.filter((p) => p.runNo === run);
+                return (
+                  <div key={run} className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-sm font-semibold text-zinc-300">Packed {rows[0].packedOn}</span>
+                      <Link
+                        href={`/admin/labels/${run}`}
+                        className="ml-auto text-sm text-zinc-400 hover:text-lime-400"
+                      >
+                        Labels →
+                      </Link>
+                    </div>
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {rows.map((r) => (
+                        <li key={r.id}>
+                          <span className="font-semibold">{r.kits}×</span> {VARIANT_NAME[r.variantId] ?? r.variantId}{" "}
+                          → <span className="font-mono text-lime-400">{r.lotCode}</span>
+                          {r.lotCode.startsWith("MP-") ? (
+                            <span className="block text-xs text-zinc-500">
+                              holds {r.components.map((c) => `${c.lotCode} ×${c.pouches / r.kits}`).join(", ")} per kit
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <ul className="mt-2 space-y-1 text-sm">
-                    {rows.map((r) => (
-                      <li key={r.id}>
-                        <span className="font-semibold">{r.kits}×</span> {VARIANT_NAME[r.variantId] ?? r.variantId}{" "}
-                        → <span className="font-mono text-lime-400">{r.lotCode}</span>
-                        {r.lotCode.startsWith("MP-") ? (
-                          <span className="block text-xs text-zinc-500">
-                            holds {r.components.map((c) => `${c.lotCode} ×${c.pouches / r.kits}`).join(", ")} per kit
-                          </span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      ) : null}
     </main>
   );
 }
