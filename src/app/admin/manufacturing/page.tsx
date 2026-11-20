@@ -3,7 +3,6 @@ import { requireAdmin } from "@/lib/admin-session";
 import { loadRecipe, RecipeConfigError } from "@/lib/recipe";
 import {
   planBatch,
-  inconsistentColors,
   formatSpoons,
   formatGrams,
   formatPounds,
@@ -51,10 +50,8 @@ export default async function Manufacturing({
 
   let plan: BatchPlan | null = null;
   let error: string | null = null;
-  let flagged: SlimeColor[] = [];
   try {
     const recipe = loadRecipe();
-    flagged = inconsistentColors(recipe);
     if (submitted) plan = planBatch(recipe, { amountLb, base, colors });
   } catch (e) {
     if (e instanceof RecipeConfigError) {
@@ -129,14 +126,6 @@ export default async function Manufacturing({
         </button>
       </form>
 
-      {flagged.length > 0 ? (
-        <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          Check the recipe for {flagged.map((c) => COLOR_LABEL[c]).join(", ")}: its
-          per-batch and per-pouch colorant imply a different number of pouches per
-          batch than the other colors. The amounts below follow the per-batch figure.
-        </p>
-      ) : null}
-
       {error ? (
         <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {error}
@@ -173,8 +162,11 @@ export default async function Manufacturing({
                     {formatGrams(p.maltoGrams)}
                     <span className="block text-xs text-zinc-500">{formatPounds(p.maltoGrams)}</span>
                   </td>
-                  <td className="px-4 py-2 font-semibold text-lime-400">
-                    {formatSpoons(p.colorantTsp)}
+                  <td className="px-4 py-2">
+                    <span className="font-semibold text-lime-400">{formatSpoons(p.colorantTsp)}</span>
+                    <span className="block text-xs text-zinc-500">
+                      {formatSpoons(p.colorantTspPerPouch)} / pouch
+                    </span>
                   </td>
                   <td className="px-4 py-2">{formatGrams(p.totalGrams)}</td>
                   <td className="px-4 py-2 text-right">{p.pouches}</td>
@@ -196,9 +188,8 @@ export default async function Manufacturing({
       ) : null}
 
       <p className="mt-4 text-xs text-zinc-600">
-        Colorant is rounded to the nearest ⅛ tsp. Pouch counts are estimates from
-        the per-pouch colorant figure; record actual pouches filled when you log the
-        batch.
+        Colorant is rounded to the nearest ⅛ tsp. Pouch counts are what a full batch
+        fills; record the actual count when you log the batch.
       </p>
     </main>
   );

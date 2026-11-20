@@ -14,16 +14,19 @@ export const TSP_PER_TBSP = 3;
 export const COLOR_ORDER: SlimeColor[] = ["red", "yellow", "green", "blue"];
 
 export interface ColorantSpec {
-  /** Colorant for ONE single-color batch of the base. */
+  /**
+   * Colorant for ONE single-color batch of the base. Deliberately different
+   * per color (yellow needs more to read as deep) — it does not change yield.
+   */
   tbspPerBatch: number;
-  /** Colorant per filled pouch — the per-pouch view of the same color. */
-  tspPerPouch: number;
 }
 
 export interface Recipe {
   /** Base for ONE single-color batch. Poly:malto is the same for every color. */
   polyGrams: number;
   maltoGrams: number;
+  /** Pouches one batch fills. The same for every color. */
+  pouchesPerBatch: number;
   colors: Record<SlimeColor, ColorantSpec>;
 }
 
@@ -45,8 +48,10 @@ export interface ColorPlan {
   /** Batches of this color the amount works out to (1 = one recipe batch). */
   batchFactor: number;
   colorantTsp: number;
-  /** Pouches implied by colorant ÷ per-pouch colorant. */
+  /** Whole pouches this much base fills. */
   pouches: number;
+  /** Colorant per pouch, for topping up a short fill. */
+  colorantTspPerPouch: number;
 }
 
 export interface BatchPlan {
@@ -82,7 +87,8 @@ export function planBatch(recipe: Recipe, input: BatchInput): BatchPlan {
       totalGrams: polyGrams + maltoGrams,
       batchFactor: factor,
       colorantTsp,
-      pouches: Math.floor(colorantTsp / spec.tspPerPouch + 1e-9),
+      pouches: Math.floor(factor * recipe.pouchesPerBatch + 1e-9),
+      colorantTspPerPouch: (spec.tbspPerBatch * TSP_PER_TBSP) / recipe.pouchesPerBatch,
     };
   });
 
@@ -96,24 +102,6 @@ export function planBatch(recipe: Recipe, input: BatchInput): BatchPlan {
       pouches: sum((p) => p.pouches),
     },
   };
-}
-
-/**
- * Colors whose per-batch and per-pouch colorant imply a different pouch count
- * per batch than the majority do. Flags a recipe entry that was written down
- * wrong, which otherwise only shows up as a short or overfilled run.
- */
-export function inconsistentColors(recipe: Recipe): SlimeColor[] {
-  const yields = COLOR_ORDER.map(
-    (c) => (recipe.colors[c].tbspPerBatch * TSP_PER_TBSP) / recipe.colors[c].tspPerPouch
-  );
-  const counts = new Map<number, number>();
-  for (const y of yields) {
-    const k = Math.round(y * 1000) / 1000;
-    counts.set(k, (counts.get(k) ?? 0) + 1);
-  }
-  const [mode] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-  return COLOR_ORDER.filter((_, i) => Math.abs(yields[i] - mode) > 1e-3);
 }
 
 const EIGHTHS = ["", "⅛", "¼", "⅜", "½", "⅝", "¾", "⅞"];

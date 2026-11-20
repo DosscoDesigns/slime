@@ -36,17 +36,18 @@ export function parseRecipe(raw: string | undefined): Recipe {
   if (!positive(r.polyGrams) || !positive(r.maltoGrams)) {
     throw new RecipeConfigError("SLIME_RECIPE needs positive polyGrams and maltoGrams");
   }
+  if (!positive(r.pouchesPerBatch)) {
+    throw new RecipeConfigError("SLIME_RECIPE needs a positive pouchesPerBatch");
+  }
   const colors = {} as Recipe["colors"];
   for (const c of COLOR_ORDER) {
     const spec = r.colors?.[c] as Partial<ColorantSpec> | undefined;
-    if (!positive(spec?.tbspPerBatch) || !positive(spec?.tspPerPouch)) {
-      throw new RecipeConfigError(
-        `SLIME_RECIPE colors.${c} needs positive tbspPerBatch and tspPerPouch`
-      );
+    if (!positive(spec?.tbspPerBatch)) {
+      throw new RecipeConfigError(`SLIME_RECIPE colors.${c} needs a positive tbspPerBatch`);
     }
-    colors[c] = { tbspPerBatch: spec.tbspPerBatch, tspPerPouch: spec.tspPerPouch };
+    colors[c] = { tbspPerBatch: spec.tbspPerBatch };
   }
-  return { polyGrams: r.polyGrams, maltoGrams: r.maltoGrams, colors };
+  return { polyGrams: r.polyGrams, maltoGrams: r.maltoGrams, pouchesPerBatch: r.pouchesPerBatch, colors };
 }
 
 export function loadRecipe(): Recipe {

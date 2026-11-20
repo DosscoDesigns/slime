@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   planBatch,
   formatSpoons,
-  inconsistentColors,
   BatchInputError,
   GRAMS_PER_LB,
   type Recipe,
@@ -14,11 +13,12 @@ import { parseRecipe, RecipeConfigError } from "./recipe";
 const FAKE: Recipe = {
   polyGrams: 1000,
   maltoGrams: 500,
+  pouchesPerBatch: 12,
   colors: {
-    red: { tbspPerBatch: 2, tspPerPouch: 0.5 },
-    yellow: { tbspPerBatch: 2, tspPerPouch: 0.5 },
-    green: { tbspPerBatch: 2, tspPerPouch: 0.5 },
-    blue: { tbspPerBatch: 1, tspPerPouch: 0.25 },
+    red: { tbspPerBatch: 2 },
+    yellow: { tbspPerBatch: 6 },
+    green: { tbspPerBatch: 2 },
+    blue: { tbspPerBatch: 1 },
   },
 };
 
@@ -48,6 +48,13 @@ describe("planBatch", () => {
     expect(red.batchFactor).toBeCloseTo(2);
     expect(red.colorantTsp).toBeCloseTo(12);
     expect(red.pouches).toBe(24);
+    expect(red.colorantTspPerPouch).toBeCloseTo(0.5);
+  });
+
+  it("gives every color the same yield however much colorant it takes", () => {
+    const plan = planBatch(FAKE, { amountLb: 1, base: "poly", colors: ["yellow", "blue"] });
+    expect(plan.perColor[0].pouches).toBe(plan.perColor[1].pouches);
+    expect(plan.perColor[0].colorantTsp).toBeGreaterThan(plan.perColor[1].colorantTsp);
   });
 
   it("starts from malto when malto is the ingredient on hand", () => {
@@ -87,20 +94,6 @@ describe("formatSpoons", () => {
   });
 });
 
-describe("inconsistentColors", () => {
-  it("is empty when every color implies the same pouch count", () => {
-    expect(inconsistentColors(FAKE)).toEqual([]);
-  });
-
-  it("flags the odd one out", () => {
-    const off: Recipe = {
-      ...FAKE,
-      colors: { ...FAKE.colors, yellow: { tbspPerBatch: 6, tspPerPouch: 0.5 } },
-    };
-    expect(inconsistentColors(off)).toEqual(["yellow"]);
-  });
-});
-
 describe("parseRecipe", () => {
   it("round-trips a valid recipe", () => {
     expect(parseRecipe(JSON.stringify(FAKE))).toEqual(FAKE);
@@ -109,6 +102,9 @@ describe("parseRecipe", () => {
   it("fails closed, naming the field but never the value", () => {
     expect(() => parseRecipe(undefined)).toThrow(RecipeConfigError);
     expect(() => parseRecipe("{")).toThrow(/not valid JSON/);
+    expect(() => parseRecipe(JSON.stringify({ ...FAKE, pouchesPerBatch: 0 }))).toThrow(
+      /pouchesPerBatch/
+    );
     const bad = { ...FAKE, colors: { ...FAKE.colors, green: { tbspPerBatch: 0 } } };
     expect(() => parseRecipe(JSON.stringify(bad))).toThrow(/colors\.green/);
   });
