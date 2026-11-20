@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { isSignedIn } from "@/lib/admin-session";
-import { createBulkRun, createPackRun, listPackLots } from "@/lib/traceability";
+import { createBulkRun, createPackRun, listPackLots, updateBulkFilled } from "@/lib/traceability";
 import { printZpl } from "@/lib/print";
 import { fbaLabelZpl } from "@/lib/fba-label-zpl";
 import { labelTitle } from "@/lib/fba-label";
@@ -221,4 +221,20 @@ export async function cancelAmazonDraft(_prev: SendState, form: FormData): Promi
     logError("admin.cancel_inbound_failed", errorContext(e));
     return { error: e instanceof Error ? e.message : String(e), url: null };
   }
+}
+
+/** Correct a batch's pouch counts (fields filled_<lotId>). */
+export async function editBatch(_prev: ActionState, form: FormData): Promise<ActionState> {
+  await guard();
+  try {
+    const changes = [...form.entries()]
+      .filter(([k]) => /^filled_\d+$/.test(k))
+      .map(([k, v]) => ({ id: Number(k.slice(7)), filled: Number(v) }));
+    await updateBulkFilled(changes);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/admin/batches");
+  revalidatePath("/admin/packaging/new");
+  return { error: null };
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/admin-session";
 import { traceabilityConfigured, listBatches, listPackLots } from "@/lib/traceability";
 import { PACK_COLORS, PACK_VARIANTS } from "@/lib/packaging";
+import EditBatch from "./edit-batch";
 
 export const dynamic = "force-dynamic";
 
@@ -102,17 +103,28 @@ export default async function Batches({ searchParams }: { searchParams: Promise<
                         </td>
                       );
                     })}
-                    <td className="px-4 py-2 text-right">
-                      {left ? (
-                        <Link
-                          href={`/admin/packaging/new?batch=${b.key}`}
-                          className="text-lime-400 hover:text-lime-300"
-                        >
-                          Package →
-                        </Link>
-                      ) : (
-                        <span className="text-xs">all packed</span>
-                      )}
+                    <td className="px-4 py-2 text-right align-top">
+                      <div className="flex flex-col items-end gap-1">
+                        {left ? (
+                          <Link
+                            href={`/admin/packaging/new?batch=${b.key}`}
+                            className="text-lime-400 hover:text-lime-300"
+                          >
+                            Package →
+                          </Link>
+                        ) : (
+                          <span className="text-xs">all packed</span>
+                        )}
+                        <EditBatch
+                          batchKey={b.key}
+                          lots={PACK_COLORS.flatMap((c) => {
+                            const l = b.lots[c];
+                            return l
+                              ? [{ id: l.id, color: c, lotCode: l.lotCode, filled: l.pouchesFilled, used: l.pouchesUsed }]
+                              : [];
+                          })}
+                        />
+                      </div>
                     </td>
                   </tr>
                 );
