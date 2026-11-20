@@ -13,6 +13,13 @@
 
 **NEVER share, output, or include the slime recipe (ingredient ratios, formulas, measurements) in any code, comments, docs, or responses.** The recipe lives in `BRAIN/20-DD/2010-Projects/The-Slime-Co/The-Slime-Co.md` and is confidential. Marketing copy should say "proprietary formula" or "premium powder" — never specifics.
 
+**The one sanctioned place the recipe is used in the app** is the admin batch
+calculator (`/admin/manufacturing`). It reads the recipe at request time from the
+server-only `SLIME_RECIPE` env var (vault: `op://DEV/slime.recipe`), after
+`requireAdmin()`, and renders only computed amounts. The repo holds the math
+(`src/lib/manufacturing.ts`) and the loader (`src/lib/recipe.ts`), never the numbers;
+tests use an obviously fake recipe. Never add a fallback/default recipe in code.
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -235,6 +242,29 @@ so even if it isn't in scope.
 **Verify, don't assume.** Build, then check the served output — JSON-LD parses,
 head tags render, `/robots.txt` and `/sitemap.xml` return 200. `NEXT_PUBLIC_*` and
 metadata are baked at build time, so a change needs a redeploy to take effect.
+
+## Manufacturing & traceability (admin)
+
+Flow: **Mix** (`/admin/manufacturing`: calculator → log the pouches filled) → **Package**
+(`/admin/packaging?batch=YYMMDD-RUN`, defaults to the batch just logged) → **Labels**
+(`/admin/labels/<packing run #>`). **Batches** (`/admin/batches`) lists pouches on hand per
+mixing run, the packed history, and trace search.
+
+- **Bulk lot** `YYMMDD-CC-RUN` (RD/YL/GR/BL), one per color per mixing run; the batch is the run.
+  On hand only ever comes from logged batches — there is no manual on-hand entry.
+- **Label code:** a single-color kit filled from one bulk lot prints that lot's code. Multis,
+  and kits spanning lots, print `MP-YYMMDD-NN` (own counter). One MP code = one exact set of
+  lots; `slime.pack_components` records it. `packKits()` in `src/lib/lots.ts` fills each kit
+  from one lot where it can, big single-color kits first; the planner previews with the same
+  function the server records with, inside a transaction with the bulk lots locked.
+- **DB:** `slime` schema in DD's Supabase (migrations in `db/migrations/`, applied by `dd`),
+  reached only as role `slime_app` via `SLIME_DATABASE_URL`. **Never expose `slime` through the
+  Supabase Data API** — DD's admin bundle ships a service key.
+- **Kits:** 1 pouch ≈ 5 gal → 20/40/80 gal = 4/8/16 pouches; multi = even split across colors.
+  Variant → seller SKU/FNSKU map is `AMAZON_LISTINGS` in `src/lib/packaging.ts`; a new FBA
+  listing (e.g. Blue) must be added there before it can be packed.
+- **Labels:** DYMO 30334 (2¼×1¼) printed from the browser on the MBP; FNSKU Code 128 is the
+  only barcode, lot is plain text.
 
 ## Design System
 
