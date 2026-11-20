@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { requireAdmin, getStripe, money } from "@/lib/admin-session";
 import { listCouponsWithUsage } from "@/lib/coupon-admin";
 
@@ -10,11 +9,7 @@ export default async function AdminCoupons() {
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-10">
-      <Link href="/admin" className="text-sm text-zinc-500 hover:text-lime-400">
-        ← Orders
-      </Link>
-
-      <header className="mb-6 mt-4">
+      <header className="mb-6">
         <h1 className="text-2xl font-extrabold tracking-tight">Coupons</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Usage is read live from Stripe — a code counts as used only once a

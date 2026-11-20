@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { requireAdmin } from "@/lib/admin-session";
 import { loadRecipe, RecipeConfigError } from "@/lib/recipe";
 import {
@@ -67,11 +66,7 @@ export default async function Manufacturing({
 
   return (
     <main className="mx-auto max-w-4xl px-5 py-10">
-      <Link href="/admin" className="text-sm text-zinc-500 hover:text-lime-400">
-        ← Orders
-      </Link>
-
-      <header className="mb-6 mt-4">
+      <header className="mb-6">
         <h1 className="text-2xl font-extrabold tracking-tight">Batch calculator</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Enter the base you have on hand. It is split evenly across the colors you
@@ -140,8 +135,8 @@ export default async function Manufacturing({
                 <th className="px-4 py-2 font-medium">Color</th>
                 <th className="px-4 py-2 font-medium">Poly</th>
                 <th className="px-4 py-2 font-medium">Malto</th>
+                <th className="px-4 py-2 font-medium">Total (poly + malto)</th>
                 <th className="px-4 py-2 font-medium">Colorant</th>
-                <th className="px-4 py-2 font-medium">Total</th>
                 <th className="px-4 py-2 text-right font-medium">≈ Pouches</th>
               </tr>
             </thead>
@@ -162,13 +157,13 @@ export default async function Manufacturing({
                     {formatGrams(p.maltoGrams)}
                     <span className="block text-xs text-zinc-500">{formatPounds(p.maltoGrams)}</span>
                   </td>
+                  <td className="px-4 py-2">{formatGrams(p.totalGrams)}</td>
                   <td className="px-4 py-2">
                     <span className="font-semibold text-lime-400">{formatSpoons(p.colorantTsp)}</span>
                     <span className="block text-xs text-zinc-500">
                       {formatSpoons(p.colorantTspPerPouch)} / pouch
                     </span>
                   </td>
-                  <td className="px-4 py-2">{formatGrams(p.totalGrams)}</td>
                   <td className="px-4 py-2 text-right">{p.pouches}</td>
                 </tr>
               ))}
@@ -178,8 +173,8 @@ export default async function Manufacturing({
                 <td className="px-4 py-2">Total</td>
                 <td className="px-4 py-2">{formatGrams(plan.totals.polyGrams)}</td>
                 <td className="px-4 py-2">{formatGrams(plan.totals.maltoGrams)}</td>
-                <td className="px-4 py-2" />
                 <td className="px-4 py-2">{formatGrams(plan.totals.totalGrams)}</td>
+                <td className="px-4 py-2" />
                 <td className="px-4 py-2 text-right">{plan.totals.pouches}</td>
               </tr>
             </tfoot>

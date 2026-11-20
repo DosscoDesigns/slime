@@ -1,10 +1,8 @@
-import Link from "next/link";
 import { requireAdmin, getStripe, money } from "@/lib/admin-session";
 import { listOrders, rowStatus } from "@/lib/orders";
 import { deliveryStats, orderDurations, formatDuration } from "@/lib/delivery-stats";
 import { CARRIERS } from "@/lib/carriers";
 import OrdersTable, { type OrderRow } from "./orders-table";
-import { signOut } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -78,19 +76,6 @@ export default async function AdminOrders({
             ) : null}
           </p>
         </div>
-        <nav className="flex items-center gap-4 text-sm">
-          <Link href="/admin/manufacturing" className="text-zinc-400 hover:text-lime-400">
-            Manufacturing
-          </Link>
-          <Link href="/admin/coupons" className="text-zinc-400 hover:text-lime-400">
-            Coupons
-          </Link>
-          <form action={signOut}>
-            <button type="submit" className="text-zinc-500 hover:text-zinc-300">
-              Sign out
-            </button>
-          </form>
-        </nav>
       </header>
 
       {postage > 0 ? (
