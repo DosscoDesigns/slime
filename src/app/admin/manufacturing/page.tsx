@@ -70,7 +70,7 @@ export default async function Manufacturing({
   return (
     <main className="mx-auto max-w-4xl px-5 py-10">
       <header className="mb-6">
-        <h1 className="text-2xl font-extrabold tracking-tight">Batch calculator</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">Mix</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Enter the base you have on hand. It is split evenly across the colors you
           pick, and {other.toLowerCase()} and colorant are scaled to match.

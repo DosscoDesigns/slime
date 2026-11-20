@@ -3,6 +3,9 @@
 import { useState } from "react";
 
 export interface LabelItem {
+  key: string;
+  /** Printed on the label: a bulk lot (261120-RD-41) or an MP code. */
+  lotCode: string;
   variantId: string;
   name: string;
   title: string;
@@ -25,18 +28,16 @@ const PAGE_CSS = `
 `;
 
 export default function LabelSheet({
-  lotCode,
   packedOn,
   items,
 }: {
-  lotCode: string;
   packedOn: string;
   items: LabelItem[];
 }) {
   const [counts, setCounts] = useState<Record<string, number>>(
-    Object.fromEntries(items.map((i) => [i.variantId, i.kits]))
+    Object.fromEntries(items.map((i) => [i.key, i.kits]))
   );
-  const total = items.reduce((s, i) => s + (counts[i.variantId] ?? 0), 0);
+  const total = items.reduce((s, i) => s + (counts[i.key] ?? 0), 0);
 
   return (
     <>
@@ -44,25 +45,26 @@ export default function LabelSheet({
       <main className="mx-auto max-w-4xl px-5 py-10 print:m-0 print:max-w-none print:p-0">
         <header className="mb-6 print:hidden">
           <h1 className="text-2xl font-extrabold tracking-tight">
-            FBA labels · <span className="font-mono text-lime-400">{lotCode}</span>
+            FBA labels · packed {packedOn}
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Packed {packedOn}. One label per kit by default; change a count to reprint. In the print
+            One label per kit by default; change a count to reprint. In the print
             dialog choose the DYMO, paper size <b>30334</b>, margins <b>none</b>, scale 100%.
           </p>
           <div className="mt-4 space-y-2">
             {items.map((i) => (
-              <label key={i.variantId} className="flex items-center gap-3 text-sm">
+              <label key={i.key} className="flex items-center gap-3 text-sm">
                 <input
                   type="number"
                   min="0"
-                  value={counts[i.variantId] ?? 0}
+                  value={counts[i.key] ?? 0}
                   onChange={(e) =>
-                    setCounts({ ...counts, [i.variantId]: Math.max(0, Math.floor(Number(e.target.value) || 0)) })
+                    setCounts({ ...counts, [i.key]: Math.max(0, Math.floor(Number(e.target.value) || 0)) })
                   }
                   className="w-20 rounded border border-zinc-700 bg-black px-2 py-1 text-right text-zinc-100"
                 />
                 <span>{i.name}</span>
+                <span className="font-mono text-xs text-lime-400">{i.lotCode}</span>
                 <span className="font-mono text-xs text-zinc-500">{i.fnsku}</span>
                 <span className="text-xs text-zinc-600">(packed {i.kits})</span>
               </label>
@@ -81,9 +83,9 @@ export default function LabelSheet({
 
         <div className="flex flex-wrap gap-3 print:block">
           {items.flatMap((i) =>
-            Array.from({ length: counts[i.variantId] ?? 0 }, (_, n) => (
+            Array.from({ length: counts[i.key] ?? 0 }, (_, n) => (
               <div
-                key={`${i.variantId}-${n}`}
+                key={`${i.key}-${n}`}
                 className="fba-label flex flex-col overflow-hidden bg-white text-black"
                 style={{
                   width: "2.25in",
@@ -120,7 +122,7 @@ export default function LabelSheet({
                   }}
                 >
                   <span>New</span>
-                  <span>Lot {lotCode}</span>
+                  <span>Lot {i.lotCode}</span>
                 </div>
               </div>
             ))

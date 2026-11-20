@@ -11,10 +11,10 @@ export default async function Labels({ params }: { params: Promise<{ lot: string
   await requireAdmin();
   if (!traceabilityConfigured()) notFound();
   const { lot } = await params;
-  const lotCode = decodeURIComponent(lot);
-  if (!/^MP-\d{6}-\d{2,}$/.test(lotCode)) notFound();
+  // The path segment is the packing run number.
+  if (!/^\d{1,6}$/.test(lot)) notFound();
 
-  const rows = await listPackLots(lotCode);
+  const rows = await listPackLots(Number(lot));
   if (rows.length === 0) notFound();
 
   const items: LabelItem[] = rows
@@ -22,6 +22,8 @@ export default async function Labels({ params }: { params: Promise<{ lot: string
     .map((r) => {
       const v = PACK_VARIANTS.find((x) => x.id === r.variantId);
       return {
+        key: String(r.id),
+        lotCode: r.lotCode,
         variantId: r.variantId,
         name: v?.name ?? r.variantId,
         title: labelTitle(v?.title ?? r.variantId),
@@ -31,5 +33,5 @@ export default async function Labels({ params }: { params: Promise<{ lot: string
       };
     });
 
-  return <LabelSheet lotCode={lotCode} packedOn={rows[0].packedOn} items={items} />;
+  return <LabelSheet packedOn={rows[0].packedOn} items={items} />;
 }

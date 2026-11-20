@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useState } from "react";
 import {
   AMAZON_LISTINGS,
   PACK_COLORS,
@@ -13,7 +13,15 @@ import {
 } from "@/lib/packaging";
 import type { FbaStock } from "@/lib/amazon-inventory";
 import type { SlimeColor } from "@/lib/products";
+import { packKits, AllocationError, type Balance, type KitGroup } from "@/lib/lots";
 import { recordPackRun, type ActionState } from "../lots-actions";
+
+export interface PlannerBatch {
+  key: string;
+  madeOn: string;
+  remaining: Counts;
+  lots: Balance[];
+}
 
 const COLOR_LABEL: Record<SlimeColor, string> = {
   red: "Red",
@@ -28,6 +36,7 @@ const COLOR_DOT: Record<SlimeColor, string> = {
   blue: "bg-sky-500",
 };
 const ZERO: Counts = { red: 0, yellow: 0, green: 0, blue: 0 };
+const VARIANT_NAME = Object.fromEntries(PACK_VARIANTS.map((v) => [v.id, v.name]));
 
 const toInt = (v: string) => Math.max(0, Math.floor(Number(v) || 0));
 
@@ -69,66 +78,89 @@ function StockCells({ variantId, stock }: { variantId: string; stock: Record<str
 }
 
 export default function Planner({
-  initialOnHand,
+  batches,
+  initialBatch,
   stock,
   stockConfigured,
-  canRecord,
-  nextRunNo,
   today,
 }: {
-  initialOnHand: Counts | null;
+  batches: PlannerBatch[];
+  initialBatch: string | null;
   stock: Record<string, FbaStock> | null;
   stockConfigured: boolean;
-  canRecord: boolean;
-  nextRunNo: number;
   today: string;
 }) {
-  const [onHand, setOnHand] = useState<Counts>(initialOnHand ?? ZERO);
+  const [picked, setPicked] = useState<string[]>(initialBatch ? [initialBatch] : []);
   const [plan, setPlan] = useState<Plan>({});
   const [state, action, pending] = useActionState<ActionState, FormData>(recordPackRun, {
     error: null,
   });
 
-  const left = useMemo(() => remaining(onHand, plan), [onHand, plan]);
-  const options = useMemo(() => suggestPlans(onHand), [onHand]);
+  const chosen = batches.filter((b) => picked.includes(b.key));
+  const lots = chosen.flatMap((b) => b.lots);
+  const onHand = chosen.reduce(
+    (sum, b) => Object.fromEntries(PACK_COLORS.map((c) => [c, sum[c] + b.remaining[c]])) as Counts,
+    ZERO
+  );
+  const left = remaining(onHand, plan);
+  const options = suggestPlans(onHand);
   const over = PACK_COLORS.filter((c) => left[c] < 0);
   const kits = PACK_VARIANTS.reduce((s, v) => s + (plan[v.id] ?? 0), 0);
   const unlabelled = PACK_VARIANTS.filter((v) => (plan[v.id] ?? 0) > 0 && !v.fnsku);
   const hasStock = PACK_COLORS.some((c) => onHand[c] > 0);
-  const edited =
-    initialOnHand !== null && PACK_COLORS.some((c) => onHand[c] !== initialOnHand[c]);
-  const recordBlocked =
-    !canRecord || kits === 0 || over.length > 0 || unlabelled.length > 0 || edited;
+
+  // The same allocation the server runs, so the preview shows the codes that will print.
+  let groups: KitGroup[] = [];
+  let allocError: string | null = null;
+  if (kits > 0 && over.length === 0) {
+    try {
+      groups = packKits(lots, plan);
+    } catch (e) {
+      allocError = e instanceof AllocationError ? e.message : String(e);
+    }
+  }
+  const recordBlocked = kits === 0 || over.length > 0 || unlabelled.length > 0 || allocError !== null;
+  const toggle = (key: string) =>
+    setPicked(picked.includes(key) ? picked.filter((k) => k !== key) : [...picked, key]);
+
+  if (batches.length === 0) {
+    return (
+      <p className="text-sm text-zinc-500">
+        No pouches on hand. Mix a batch and log its pouches, and it will open here.
+      </p>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <section className="rounded-lg border border-zinc-800 bg-zinc-950">
         <div className="px-4 py-4">
-          <h2 className="mb-3 text-sm font-semibold text-zinc-300">Pouches on hand</h2>
-          <div className="flex flex-wrap gap-4">
-            {PACK_COLORS.map((c) => (
-              <label key={c} className="flex items-center gap-2 text-sm">
-                <span className={`h-2.5 w-2.5 rounded-full ${COLOR_DOT[c]}`} />
-                <span className="w-14 text-zinc-400">{COLOR_LABEL[c]}</span>
-                <input
-                  type="number"
-                  min="0"
-                  inputMode="numeric"
-                  value={onHand[c] || ""}
-                  onChange={(e) => setOnHand({ ...onHand, [c]: toInt(e.target.value) })}
-                  className="w-20 rounded border border-zinc-700 bg-black px-2 py-1.5 text-zinc-100"
-                />
-              </label>
-            ))}
-            {edited ? (
-              <button
-                type="button"
-                onClick={() => setOnHand(initialOnHand!)}
-                className="text-xs text-zinc-500 hover:text-zinc-300"
-              >
-                Reset to logged
-              </button>
-            ) : null}
+          <h2 className="mb-3 text-sm font-semibold text-zinc-300">Pack from</h2>
+          <div className="space-y-2">
+            {batches.map((b) => {
+              const on = picked.includes(b.key);
+              return (
+                <label
+                  key={b.key}
+                  className={`flex flex-wrap items-center gap-x-4 gap-y-1 rounded border px-3 py-2 text-sm ${
+                    on ? "border-lime-400/50 bg-lime-400/5" : "border-zinc-800"
+                  }`}
+                >
+                  <input type="checkbox" checked={on} onChange={() => toggle(b.key)} />
+                  <span className="font-mono font-semibold">{b.key}</span>
+                  <span className="text-xs text-zinc-500">mixed {b.madeOn}</span>
+                  {PACK_COLORS.map((c) => (
+                    <span key={c} className="flex items-center gap-1.5 text-zinc-300">
+                      <span className={`h-2.5 w-2.5 rounded-full ${COLOR_DOT[c]}`} />
+                      {b.remaining[c]}
+                    </span>
+                  ))}
+                  {b.key === initialBatch ? (
+                    <span className="text-xs text-lime-400">this batch</span>
+                  ) : null}
+                </label>
+              );
+            })}
           </div>
         </div>
         <div className="border-t border-zinc-800 px-4 py-3 text-sm">
@@ -152,7 +184,7 @@ export default function Planner({
           {over.length > 0 ? (
             <p className="mt-2 text-red-300">
               Short on {over.map((c) => COLOR_LABEL[c].toLowerCase()).join(", ")}: this plan needs
-              more pouches than you have.
+              more pouches than the batches you picked.
             </p>
           ) : null}
           {unlabelled.length > 0 ? (
@@ -260,12 +292,34 @@ export default function Planner({
       </section>
 
       <form action={action} className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-4">
-        <h2 className="text-sm font-semibold text-zinc-300">Record packing run &amp; print labels</h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          Draws pouches from the oldest bulk lots first, saves which lots went into each kit, and
-          opens the FBA labels for printing.
-        </p>
+        <h2 className="text-sm font-semibold text-zinc-300">Record packing &amp; print labels</h2>
+        {groups.length > 0 ? (
+          <ul className="mt-2 space-y-1 text-sm">
+            {groups.map((g, i) => (
+              <li key={i}>
+                <span className="font-semibold">{g.kits}×</span> {VARIANT_NAME[g.variantId]} →{" "}
+                {g.bulkCode ? (
+                  <span className="font-mono text-lime-400">{g.bulkCode}</span>
+                ) : (
+                  <>
+                    <span className="font-mono text-lime-400">MP code</span>
+                    <span className="text-xs text-zinc-500">
+                      {" "}
+                      ({g.perKit.map((p) => `${p.lotCode} ×${p.pouches}`).join(", ")} per kit)
+                    </span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-xs text-zinc-500">
+            Pick kits above. Single-color kits from one batch print that batch&apos;s code; multis and
+            mixed kits get an MP code.
+          </p>
+        )}
         <input type="hidden" name="plan" value={JSON.stringify(plan)} />
+        <input type="hidden" name="lots" value={JSON.stringify(lots.map((l) => l.id))} />
         <div className="mt-3 flex flex-wrap items-end gap-4 text-sm">
           <label className="flex flex-col gap-1">
             <span className="text-zinc-400">Packed on</span>
@@ -277,17 +331,6 @@ export default function Planner({
               className="rounded border border-zinc-700 bg-black px-2 py-1.5 text-zinc-100"
             />
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-zinc-400">Run #</span>
-            <input
-              type="number"
-              name="runNo"
-              min="1"
-              defaultValue={nextRunNo}
-              required
-              className="w-20 rounded border border-zinc-700 bg-black px-2 py-1.5 text-zinc-100"
-            />
-          </label>
           <button
             type="submit"
             disabled={recordBlocked || pending}
@@ -296,17 +339,7 @@ export default function Planner({
             {pending ? "Recording…" : `Record ${kits} kits & print labels`}
           </button>
         </div>
-        {!canRecord ? (
-          <p className="mt-2 text-xs text-zinc-500">
-            Recording needs the traceability database, which isn&apos;t
-            connected here yet.
-          </p>
-        ) : edited ? (
-          <p className="mt-2 text-xs text-amber-200">
-            You changed the pouch counts, so this is a what-if. Reset to logged to record, or log the
-            missing batch first.
-          </p>
-        ) : null}
+        {allocError ? <p className="mt-2 text-sm text-red-300">{allocError}</p> : null}
         {state.error ? <p className="mt-2 text-sm text-red-300">{state.error}</p> : null}
       </form>
     </div>

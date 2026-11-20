@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 import { signOut } from "./actions";
 
 const MFG = [
-  { href: "/admin/manufacturing", label: "Batch" },
+  { href: "/admin/manufacturing", label: "Mix" },
+  { href: "/admin/batches", label: "Batches" },
   { href: "/admin/packaging", label: "Package" },
-  { href: "/admin/lots", label: "Lots & labels" },
 ];
 const MFG_PATHS = [...MFG.map((m) => m.href), "/admin/labels"];
 
@@ -55,7 +55,7 @@ export default function AdminNav() {
           <div className="mx-auto flex max-w-6xl items-center gap-1 overflow-x-auto px-5 py-1.5 text-sm">
             {MFG.map((m, i) => {
               const active =
-                under(pathname, m.href) || (m.href === "/admin/lots" && under(pathname, "/admin/labels"));
+                under(pathname, m.href) || (m.href === "/admin/packaging" && under(pathname, "/admin/labels"));
               return (
                 <span key={m.href} className="flex shrink-0 items-center gap-1">
                   {i > 0 ? <span className="px-1 text-zinc-700">→</span> : null}

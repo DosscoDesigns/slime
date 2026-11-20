@@ -9,7 +9,7 @@
 import postgres from "postgres";
 import type { SlimeColor } from "@/lib/products";
 import { PACK_COLORS, PACK_VARIANTS, type Counts, type Plan } from "@/lib/packaging";
-import { allocate, bulkLotCode, packLotCode, COLOR_CODE, type Balance } from "@/lib/lots";
+import { packKits, bulkLotCode, packLotCode, yymmdd, COLOR_CODE, type Balance } from "@/lib/lots";
 
 export class TraceabilityConfigError extends Error {
   constructor(message: string) {
@@ -79,22 +79,32 @@ export async function listBulkLots(): Promise<BulkLotRow[]> {
   }));
 }
 
-export async function onHandByColor(): Promise<Counts> {
-  const rows = await sql()`
-    select color, coalesce(sum(pouches_remaining), 0)::int as n
-    from slime.bulk_lot_balances group by color`;
-  const counts: Counts = { red: 0, yellow: 0, green: 0, blue: 0 };
-  for (const r of rows) counts[r.color as SlimeColor] = r.n;
-  return counts;
+/** One mixing run: the four color lots that share a date and run number. */
+export interface Batch {
+  key: string; // YYMMDD-RUN, e.g. 261120-43
+  madeOn: string;
+  runNo: number;
+  lots: Partial<Record<SlimeColor, BulkLotRow>>;
+  remaining: Counts;
+}
+
+export async function listBatches(): Promise<Batch[]> {
+  const out = new Map<string, Batch>();
+  for (const l of await listBulkLots()) {
+    const key = `${yymmdd(l.madeOn)}-${String(l.runNo).padStart(2, "0")}`;
+    let b = out.get(key);
+    if (!b) {
+      b = { key, madeOn: l.madeOn, runNo: l.runNo, lots: {}, remaining: { red: 0, yellow: 0, green: 0, blue: 0 } };
+      out.set(key, b);
+    }
+    b.lots[l.color] = l;
+    b.remaining[l.color] += l.pouchesRemaining;
+  }
+  return [...out.values()];
 }
 
 export async function nextBulkRunNo(): Promise<number> {
   const [r] = await sql()`select coalesce(max(run_no), 0) + 1 as n from slime.bulk_lots`;
-  return r.n;
-}
-
-export async function nextPackRunNo(): Promise<number> {
-  const [r] = await sql()`select coalesce(max(run_no), 0) + 1 as n from slime.pack_lots`;
   return r.n;
 }
 
@@ -128,47 +138,62 @@ export async function createBulkRun(run: NewBulkRun): Promise<string[]> {
 }
 
 /**
- * Record a packing run: one pack lot per FNSKU, pouches drawn oldest-first.
- * The balance read and the inserts share a transaction with the bulk lots
- * locked, so two people packing at once can't both spend the same pouches.
+ * Record a packing run from the chosen bulk lots. Kits are grouped by the
+ * exact lots they hold (see packKits); each group is one row with the code
+ * its labels print. The balance read and the inserts share a transaction with
+ * the bulk lots locked, so two people packing at once can't spend the same
+ * pouches or mint the same MP code. Returns the packing run number.
  */
 export async function createPackRun(input: {
   packedOn: string;
-  runNo: number;
   plan: Plan;
+  lotIds: number[];
   packedBy?: string;
-}): Promise<string> {
-  const lotCode = packLotCode(input.packedOn, input.runNo);
-  await sql().begin(async (tx) => {
+}): Promise<number> {
+  if (input.lotIds.length === 0) throw new Error("Pick at least one batch to pack from.");
+  return sql().begin(async (tx) => {
     await tx`select id from slime.bulk_lots for update`;
     const bal = await tx`
-      select id, color, made_on, pouches_remaining from slime.bulk_lot_balances`;
+      select id, lot_code, color, made_on, pouches_remaining
+      from slime.bulk_lot_balances where id in ${tx(input.lotIds)}`;
     const balances: Balance[] = bal.map((b) => ({
       id: Number(b.id),
+      lotCode: b.lot_code,
       color: b.color,
       madeOn: iso(b.made_on),
       remaining: b.pouches_remaining,
     }));
-    for (const a of allocate(balances, input.plan)) {
-      const v = PACK_VARIANTS.find((x) => x.id === a.variantId)!;
-      const [lot] = await tx`
+    const groups = packKits(balances, input.plan);
+
+    const [{ run }] = await tx`select coalesce(max(run_no), 0) + 1 as run from slime.pack_lots`;
+    const [{ mp }] = await tx`
+      select coalesce(max(substring(lot_code from '[0-9]+$')::int), 0) as mp
+      from slime.pack_lots where lot_code ~ '^MP-[0-9]{6}-[0-9]+$'`;
+    let nextMp = mp + 1;
+
+    for (const g of groups) {
+      const v = PACK_VARIANTS.find((x) => x.id === g.variantId)!;
+      const code = g.bulkCode ?? packLotCode(input.packedOn, nextMp++);
+      const [row] = await tx`
         insert into slime.pack_lots (lot_code, packed_on, run_no, variant_id, fnsku, kits, packed_by)
-        values (${lotCode}, ${input.packedOn}, ${input.runNo}, ${v.id}, ${v.fnsku},
-                ${a.kits}, ${input.packedBy || null})
+        values (${code}, ${input.packedOn}, ${run}, ${v.id}, ${v.fnsku}, ${g.kits},
+                ${input.packedBy || null})
         returning id`;
-      const comps = a.components.map((c) => ({
-        pack_lot_id: lot.id,
-        bulk_lot_id: c.bulkLotId,
-        pouches_used: c.pouches,
-      }));
-      await tx`insert into slime.pack_components ${tx(comps)}`;
+      await tx`insert into slime.pack_components ${tx(
+        g.perKit.map((p) => ({
+          pack_lot_id: row.id,
+          bulk_lot_id: p.bulkLotId,
+          pouches_used: p.pouches * g.kits,
+        }))
+      )}`;
     }
+    return Number(run);
   });
-  return lotCode;
 }
 
 export interface PackLotRow {
   id: number;
+  runNo: number;
   lotCode: string;
   packedOn: string;
   variantId: string;
@@ -178,21 +203,22 @@ export interface PackLotRow {
   components: { lotCode: string; color: SlimeColor; pouches: number }[];
 }
 
-export async function listPackLots(lotCode?: string): Promise<PackLotRow[]> {
+export async function listPackLots(runNo?: number): Promise<PackLotRow[]> {
   const db = sql();
   const rows = await db`
-    select p.id, p.lot_code, p.packed_on, p.variant_id, p.fnsku, p.kits, p.packed_by,
+    select p.id, p.run_no, p.lot_code, p.packed_on, p.variant_id, p.fnsku, p.kits, p.packed_by,
            coalesce(json_agg(json_build_object('lotCode', b.lot_code, 'color', b.color,
                     'pouches', c.pouches_used) order by b.color, b.lot_code)
                     filter (where b.id is not null), '[]') as components
     from slime.pack_lots p
     left join slime.pack_components c on c.pack_lot_id = p.id
     left join slime.bulk_lots b on b.id = c.bulk_lot_id
-    ${lotCode ? db`where p.lot_code = ${lotCode}` : db``}
+    ${runNo ? db`where p.run_no = ${runNo}` : db``}
     group by p.id
     order by p.packed_on desc, p.run_no desc, p.variant_id`;
   return rows.map((r) => ({
     id: Number(r.id),
+    runNo: r.run_no,
     lotCode: r.lot_code,
     packedOn: iso(r.packed_on),
     variantId: r.variant_id,
