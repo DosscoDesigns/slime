@@ -22,16 +22,26 @@ export function fbaLabelZpl({
   title,
   lotCode,
   copies,
+  shiftDown = 0,
 }: {
   fnsku: string;
   title: string;
   lotCode: string;
   copies: number;
+  /**
+   * Dots to move the whole label down (^LT), -120..120 (203 dots = 1 inch).
+   * Printers start printing a little above or below the label edge; this
+   * lines it up without changing the layout.
+   */
+  shiftDown?: number;
 }): string {
   if (!/^[A-Z0-9]{10}$/.test(fnsku)) throw new Error(`not an FNSKU: ${fnsku}`);
   if (!/^[A-Z0-9-]{6,24}$/.test(lotCode)) throw new Error(`not a lot code: ${lotCode}`);
   if (!Number.isInteger(copies) || copies < 1 || copies > 500) {
     throw new Error(`label count must be 1–500, got ${copies}`);
+  }
+  if (!Number.isInteger(shiftDown) || shiftDown < -120 || shiftDown > 120) {
+    throw new Error(`label shift must be a whole number from -120 to 120 dots, got ${shiftDown}`);
   }
   const barX = Math.max(0, Math.round((W - code128Modules(fnsku) * MODULE) / 2));
   const t = clean(title);
@@ -47,6 +57,7 @@ export function fbaLabelZpl({
     `^PW${W}`,
     `^LL${H}`,
     "^LH0,0",
+    `^LT${shiftDown}`,
     `^FO${barX},24^BY${MODULE},3,70^BCN,70,N,N,N^FD${fnsku}^FS`,
     `^FO0,100^FB${W},1,0,C^A0N,24,24^FD${fnsku}^FS`,
     `^FO20,130^FB${W - 40},2,2,L^A0N,20,20^FD${shortTitle}^FS`,
