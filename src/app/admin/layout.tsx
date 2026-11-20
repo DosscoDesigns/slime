@@ -19,7 +19,7 @@ export default async function AdminLayout({
   // The menu is chrome, not a gate: every page still calls requireAdmin().
   const signedIn = await isSignedIn();
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-zinc-100">
+    <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 print:bg-white print:text-black">
       {signedIn ? <AdminNav /> : null}
       {children}
     </div>

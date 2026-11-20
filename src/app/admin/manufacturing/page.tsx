@@ -11,6 +11,9 @@ import {
   type BatchPlan,
 } from "@/lib/manufacturing";
 import type { SlimeColor } from "@/lib/products";
+import { traceabilityConfigured, nextBulkRunNo } from "@/lib/traceability";
+import { GRAMS_PER_LB } from "@/lib/manufacturing";
+import LogBatch from "./log-batch";
 
 export const dynamic = "force-dynamic";
 
@@ -180,6 +183,23 @@ export default async function Manufacturing({
             </tfoot>
           </table>
         </div>
+      ) : null}
+
+      {plan && traceabilityConfigured() ? (
+        <LogBatch
+          colors={plan.perColor.map((p) => ({ color: p.color, estimate: p.pouches }))}
+          base={base}
+          baseLbPerColor={
+            (base === "poly" ? plan.perColor[0].polyGrams : plan.perColor[0].maltoGrams) / GRAMS_PER_LB
+          }
+          nextRunNo={await nextBulkRunNo()}
+          today={new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })}
+        />
+      ) : plan ? (
+        <p className="mt-6 text-sm text-zinc-500">
+          Batch logging needs the traceability database (SLIME_DATABASE_URL), which isn&apos;t
+          connected here yet.
+        </p>
       ) : null}
 
       <p className="mt-4 text-xs text-zinc-600">

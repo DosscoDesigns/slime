@@ -22,6 +22,8 @@ export interface PackVariant {
    * inventory endpoint. null = no FNSKU yet (listing not set to FBA).
    */
   fnsku: string | null;
+  /** Product title printed on the FBA label, matching the Amazon listing. */
+  title: string;
 }
 
 const GALLONS = [20, 40, 80] as const;
@@ -32,19 +34,30 @@ const COLOR_NAME: Record<SlimeColor, string> = {
   blue: "Blue",
 };
 
-// Where Amazon has more than one SKU for a listing, the one carrying inventory
-// is used. Multi 40G also has X005F46NAD/X005F46GDR and Red 80G X005F474CT.
-const FNSKU: Record<string, string> = {
-  "multi-20": "X0055YOG1L",
-  "multi-40": "X0055YTXTB",
-  "multi-80": "X0058YM7F5",
-  "red-20": "X005AN7BIR",
-  "red-40": "X0059BD4LD",
-  "red-80": "X005AMX96B",
-  "yellow-40": "X005AMY1WR",
-  "green-20": "X0059BBFOL",
-  "green-40": "X005994761",
-  "green-80": "X005993UG9",
+/**
+ * Amazon listings per variant, from the SP-API FBA inventory endpoint
+ * (2026-11-20). The first entry is the one we label with; extras are
+ * duplicate SKUs Amazon holds for the same listing and are shown for their
+ * stock only. A variant with no entry has no FBA listing yet.
+ */
+export const AMAZON_LISTINGS: Record<string, { sellerSku: string; fnsku: string }[]> = {
+  "multi-20": [{ sellerSku: "WG-WSYO-O5LJ", fnsku: "X0055YOG1L" }],
+  "multi-40": [
+    { sellerSku: "YX-O588-0X40", fnsku: "X0055YTXTB" },
+    { sellerSku: "1R-9836-2X2X", fnsku: "X005F46NAD" },
+    { sellerSku: "ER-NQBJ-UXQ7", fnsku: "X005F46GDR" },
+  ],
+  "multi-80": [{ sellerSku: "FW-5MV4-7L0Y", fnsku: "X0058YM7F5" }],
+  "red-20": [{ sellerSku: "HP-IQWX-RCGQ", fnsku: "X005AN7BIR" }],
+  "red-40": [{ sellerSku: "87-H8Z9-PKIP", fnsku: "X0059BD4LD" }],
+  "red-80": [
+    { sellerSku: "8B-VVYL-Y68P", fnsku: "X005AMX96B" },
+    { sellerSku: "B5-BIQT-3N9I", fnsku: "X005F474CT" },
+  ],
+  "yellow-40": [{ sellerSku: "84-QJ9K-9V9Q", fnsku: "X005AMY1WR" }],
+  "green-20": [{ sellerSku: "UR-GUFX-I8M3", fnsku: "X0059BBFOL" }],
+  "green-40": [{ sellerSku: "E6-64N7-9SR8", fnsku: "X005994761" }],
+  "green-80": [{ sellerSku: "GE-NIB9-EFDH", fnsku: "X005993UG9" }],
 };
 
 export const PACK_VARIANTS: PackVariant[] = [null, ...PACK_COLORS].flatMap((color) =>
@@ -55,7 +68,8 @@ export const PACK_VARIANTS: PackVariant[] = [null, ...PACK_COLORS].flatMap((colo
       name: `${color ? COLOR_NAME[color] : "RYGB Multi"} · ${gallons} gal`,
       gallons,
       color,
-      fnsku: FNSKU[id] ?? null,
+      fnsku: AMAZON_LISTINGS[id]?.[0].fnsku ?? null,
+      title: `The Slime Co Instant Slime Powder (${color ? COLOR_NAME[color] : "RYGB Multi"}, ${gallons} Gallons)`,
     };
   })
 );

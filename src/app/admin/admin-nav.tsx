@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/admin", label: "Orders" },
   { href: "/admin/manufacturing", label: "Manufacturing" },
   { href: "/admin/packaging", label: "Packaging" },
+  { href: "/admin/lots", label: "Lots" },
   { href: "/admin/coupons", label: "Coupons" },
 ];
 
@@ -19,7 +20,7 @@ function isActive(pathname: string, href: string): boolean {
 export default function AdminNav() {
   const pathname = usePathname();
   return (
-    <header className="sticky top-0 z-20 border-b border-zinc-800 bg-[#0a0a0a]/95 backdrop-blur">
+    <header className="sticky top-0 z-20 print:hidden border-b border-zinc-800 bg-[#0a0a0a]/95 backdrop-blur">
       <nav className="mx-auto flex max-w-6xl items-center gap-5 overflow-x-auto px-5 py-3 text-sm">
         <span className="shrink-0 font-extrabold tracking-tight text-lime-400">Slime Co Admin</span>
         {LINKS.map((l) => (
