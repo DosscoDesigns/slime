@@ -138,6 +138,37 @@ export async function createBulkRun(run: NewBulkRun): Promise<string[]> {
 }
 
 /**
+ * Correct how many pouches a batch's lots were filled with. Never below what
+ * has already been packed from a lot. Each change is noted on the lot.
+ */
+export async function updateBulkFilled(changes: { id: number; filled: number }[]): Promise<void> {
+  if (changes.length === 0) return;
+  await sql().begin(async (tx) => {
+    const ids = changes.map((c) => c.id);
+    await tx`select id from slime.bulk_lots where id in ${tx(ids)} for update`;
+    const rows = await tx`
+      select id, lot_code, pouches_filled, pouches_used from slime.bulk_lot_balances
+      where id in ${tx(ids)}`;
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    for (const c of changes) {
+      const r = rows.find((x) => Number(x.id) === c.id);
+      if (!r) throw new Error("That lot no longer exists.");
+      if (!Number.isInteger(c.filled) || c.filled < 0) throw new Error(`${r.lot_code}: enter a whole number.`);
+      if (c.filled < r.pouches_used) {
+        throw new Error(`${r.lot_code}: ${r.pouches_used} already packed, so it can't be less than that.`);
+      }
+      if (c.filled === r.pouches_filled) continue;
+      await tx`
+        update slime.bulk_lots
+        set pouches_filled = ${c.filled},
+            notes = concat_ws(' · ', nullif(notes, ''),
+                              ${`filled corrected ${r.pouches_filled}→${c.filled} on ${today}`}::text)
+        where id = ${c.id}`;
+    }
+  });
+}
+
+/**
  * Record a packing run from the chosen bulk lots. Kits are grouped by the
  * exact lots they hold (see packKits); each group is one row with the code
  * its labels print. The balance read and the inserts share a transaction with
