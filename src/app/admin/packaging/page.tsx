@@ -6,6 +6,7 @@ import { inboundByPackRun, type InboundStatus } from "@/lib/amazon-inbound";
 import { PACK_VARIANTS } from "@/lib/packaging";
 import { logError, errorContext } from "@/lib/logger";
 import SendButton from "./send-button";
+import CancelButton from "./cancel-button";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ const SHIPMENT_STATUS: Record<string, string> = {
   WORKING: "Working",
 };
 
-function AmazonStatus({ s }: { s: InboundStatus }) {
+function AmazonStatus({ s, runNo }: { s: InboundStatus; runNo: number }) {
   return (
     <div className="text-right text-sm">
       <a href={s.url} target="_blank" rel="noreferrer" className="text-lime-400 hover:text-lime-300">
@@ -44,6 +45,9 @@ function AmazonStatus({ s }: { s: InboundStatus }) {
       ) : (
         <p className="mt-1 text-xs text-zinc-500">Pick placement &amp; shipping in Seller Central.</p>
       )}
+      {s.status === "ACTIVE" && s.shipments.every((x) => x.status === "WORKING" || x.status === "UNCONFIRMED") ? (
+        <CancelButton runNo={runNo} />
+      ) : null}
     </div>
   );
 }
@@ -123,7 +127,7 @@ export default async function Packages() {
                     >
                       Labels
                     </Link>
-                    {status ? <AmazonStatus s={status} /> : amazon && inbound ? <SendButton runNo={run} /> : null}
+                    {status ? <AmazonStatus s={status} runNo={run} /> : amazon && inbound ? <SendButton runNo={run} /> : null}
                   </div>
                 </div>
               </div>

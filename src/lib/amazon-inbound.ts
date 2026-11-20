@@ -231,3 +231,14 @@ export async function createInboundPlan(input: {
     url: sendToAmazonUrl(created.inboundPlanId),
   };
 }
+
+/**
+ * Cancel the plan for a packing run. Only plans named for that run — never
+ * one a person created by hand in Seller Central.
+ */
+export async function cancelInboundPlan(runNo: number): Promise<void> {
+  const plan = (await inboundByPackRun(true))[runNo];
+  if (!plan) throw new InboundError("No Amazon plan for this package.");
+  await sp(`/inboundPlans/${encodeURIComponent(plan.inboundPlanId)}/cancellation`, { method: "PUT" });
+  cache = null;
+}

@@ -7,7 +7,7 @@ import { createBulkRun, createPackRun, listPackLots } from "@/lib/traceability";
 import { printZpl } from "@/lib/print";
 import { fbaLabelZpl } from "@/lib/fba-label-zpl";
 import { labelTitle } from "@/lib/fba-label";
-import { createInboundPlan } from "@/lib/amazon-inbound";
+import { createInboundPlan, cancelInboundPlan } from "@/lib/amazon-inbound";
 import { amazonConfigured } from "@/lib/amazon-inventory";
 import { logError, errorContext } from "@/lib/logger";
 import { AllocationError, yymmdd } from "@/lib/lots";
@@ -180,7 +180,11 @@ export async function sendToAmazon(_prev: SendState, form: FormData): Promise<Se
   try {
     if (!amazonConfigured()) throw new Error("The Amazon connection isn't set up here.");
     // A local test database holds made-up packages; never send those to the real account.
-    if (/@(localhost|127\.0\.0\.1)[:/]/.test(process.env.SLIME_DATABASE_URL ?? "")) {
+    // AMAZON_TEST_SENDS=1 allows it for a deliberate test; the draft can be cancelled.
+    if (
+      /@(localhost|127\.0\.0\.1)[:/]/.test(process.env.SLIME_DATABASE_URL ?? "") &&
+      process.env.AMAZON_TEST_SENDS !== "1"
+    ) {
       throw new Error("Send to Amazon is off on the test database. It works on the live site.");
     }
     const runNo = posInt(form.get("runNo"), "Packing run");
@@ -201,6 +205,20 @@ export async function sendToAmazon(_prev: SendState, form: FormData): Promise<Se
     return { error: null, url: plan.url };
   } catch (e) {
     logError("admin.send_to_amazon_failed", errorContext(e));
+    return { error: e instanceof Error ? e.message : String(e), url: null };
+  }
+}
+
+/** Cancel a draft plan we created (e.g. a test). Amazon refuses once it's shipped. */
+export async function cancelAmazonDraft(_prev: SendState, form: FormData): Promise<SendState> {
+  await guard();
+  try {
+    const runNo = posInt(form.get("runNo"), "Packing run");
+    await cancelInboundPlan(runNo);
+    revalidatePath("/admin/packaging");
+    return { error: null, url: null };
+  } catch (e) {
+    logError("admin.cancel_inbound_failed", errorContext(e));
     return { error: e instanceof Error ? e.message : String(e), url: null };
   }
 }
