@@ -2,30 +2,39 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
+import { parseBrowserPrintDevice } from "@/lib/browser-print";
 import { printFbaLabels, fbaLabelZplFor, type PrintState } from "../../lots-actions";
 
 // Zebra Browser Print: Zebra's free helper app on the Mac, which hands ZPL to a
 // USB (or network) Zebra. Chrome lets an https page talk to it on loopback.
 const BROWSER_PRINT = "http://127.0.0.1:9100";
 
+const TEXT = { "Content-Type": "text/plain;charset=UTF-8" };
+
 async function printViaBrowserPrint(zpl: string): Promise<void> {
   let res: Response;
   try {
-    res = await fetch(`${BROWSER_PRINT}/default?type=printer`);
+    res = await fetch(`${BROWSER_PRINT}/default?type=printer`, { headers: TEXT });
   } catch {
     throw new Error(
       "Couldn't reach Zebra Browser Print on this computer. Install it from zebra.com, make sure it's running, and use Chrome."
     );
   }
-  const text = res.ok ? await res.text() : "";
-  if (!text.trim()) {
+  const device = parseBrowserPrintDevice(res.ok ? await res.text() : "");
+  if (!device) {
     throw new Error("Zebra Browser Print has no default printer. Open it and choose the Zebra.");
   }
   const write = await fetch(`${BROWSER_PRINT}/write`, {
     method: "POST",
-    body: JSON.stringify({ device: JSON.parse(text), data: zpl }),
+    headers: TEXT,
+    body: JSON.stringify({ device, data: zpl }),
   });
-  if (!write.ok) throw new Error(`Zebra Browser Print refused the job (${write.status}).`);
+  if (!write.ok) {
+    const why = (await write.text().catch(() => "")).trim().slice(0, 200);
+    throw new Error(
+      `Zebra Browser Print refused the job (${write.status}${why ? `: ${why}` : ""}) — printer "${device.name}" via ${device.connection || "unknown connection"}.`
+    );
+  }
 }
 
 export interface LabelItem {
