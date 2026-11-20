@@ -179,6 +179,10 @@ export async function sendToAmazon(_prev: SendState, form: FormData): Promise<Se
   await guard();
   try {
     if (!amazonConfigured()) throw new Error("The Amazon connection isn't set up here.");
+    // A local test database holds made-up packages; never send those to the real account.
+    if (/@(localhost|127\.0\.0\.1)[:/]/.test(process.env.SLIME_DATABASE_URL ?? "")) {
+      throw new Error("Send to Amazon is off on the test database. It works on the live site.");
+    }
     const runNo = posInt(form.get("runNo"), "Packing run");
     const rows = await listPackLots(runNo);
     if (rows.length === 0) throw new Error("No such packing run.");

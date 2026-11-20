@@ -122,6 +122,17 @@ export async function inboundByPackRun(fresh = false): Promise<Record<number, In
 }
 
 type Owner = "SELLER" | "AMAZON" | "NONE";
+
+/** Owner corrections named in an Amazon createInboundPlan error, if any. */
+export function ownerFixes(message: string): { msku: string; field: "prepOwner" | "labelOwner"; value: Owner }[] {
+  return [...message.matchAll(/(\S+) does not require (prepOwner|labelOwner)[^[]*Accepted values: \[(\w+)/g)]
+    .filter(([, , , v]) => v === "NONE" || v === "SELLER" || v === "AMAZON")
+    .map(([, msku, field, value]) => ({
+      msku,
+      field: field as "prepOwner" | "labelOwner",
+      value: value as Owner,
+    }));
+}
 const owner = (constraint: string | undefined): Owner =>
   constraint === "AMAZON_ONLY" ? "AMAZON" : constraint === "NONE_ONLY" ? "NONE" : "SELLER";
 
@@ -152,27 +163,51 @@ export async function createInboundPlan(input: {
   const existing = (await inboundByPackRun(true))[input.runNo];
   if (existing) return existing;
 
-  const q = new URLSearchParams({ marketplaceId: MARKETPLACE_US });
-  for (const i of input.items) q.append("mskus", i.msku);
-  const prep = await sp<{
-    mskuPrepDetails?: { msku: string; labelOwnerConstraint?: string; prepOwnerConstraint?: string }[];
-  }>(`/items/prepDetails?${q}`);
-  const rules = new Map((prep.mskuPrepDetails ?? []).map((d) => [d.msku, d]));
+  // Asked for several SKUs at once, prepDetails answers for the first only,
+  // so ask one at a time (it's a handful, well inside the 2 req/s limit).
+  const owners = new Map<string, { labelOwner: Owner; prepOwner: Owner }>();
+  for (const i of input.items) {
+    const q = new URLSearchParams({ marketplaceId: MARKETPLACE_US, mskus: i.msku });
+    const prep = await sp<{
+      mskuPrepDetails?: { msku: string; labelOwnerConstraint?: string; prepOwnerConstraint?: string }[];
+    }>(`/items/prepDetails?${q}`);
+    const d = prep.mskuPrepDetails?.find((x) => x.msku === i.msku);
+    owners.set(i.msku, {
+      labelOwner: owner(d?.labelOwnerConstraint),
+      prepOwner: owner(d?.prepOwnerConstraint),
+    });
+    await new Promise((r) => setTimeout(r, 600));
+  }
 
-  const created = await sp<{ inboundPlanId: string; operationId: string }>("/inboundPlans", {
-    method: "POST",
-    body: JSON.stringify({
-      name: planName(input.runNo, input.packedOn),
+  const name = planName(input.runNo, input.packedOn);
+  const sourceAddress = await shipFrom();
+  const body = () =>
+    JSON.stringify({
+      name,
       destinationMarketplaces: [MARKETPLACE_US],
-      sourceAddress: await shipFrom(),
-      items: input.items.map((i) => ({
-        msku: i.msku,
-        quantity: i.quantity,
-        labelOwner: owner(rules.get(i.msku)?.labelOwnerConstraint),
-        prepOwner: owner(rules.get(i.msku)?.prepOwnerConstraint),
-      })),
-    }),
-  });
+      sourceAddress,
+      items: input.items.map((i) => ({ msku: i.msku, quantity: i.quantity, ...owners.get(i.msku)! })),
+    });
+
+  // If Amazon still disagrees about an owner, its error names the accepted
+  // value ("X does not require prepOwner but SELLER was assigned. Accepted
+  // values: [NONE]"); apply it and try again, a couple of times at most.
+  let created: { inboundPlanId: string; operationId: string } | null = null;
+  for (let attempt = 0; !created; attempt++) {
+    try {
+      created = await sp<{ inboundPlanId: string; operationId: string }>("/inboundPlans", {
+        method: "POST",
+        body: body(),
+      });
+    } catch (e) {
+      const fixes = ownerFixes(e instanceof Error ? e.message : String(e));
+      if (attempt >= 2 || fixes.length === 0) throw e;
+      for (const f of fixes) {
+        const o = owners.get(f.msku);
+        if (o) o[f.field] = f.value;
+      }
+    }
+  }
 
   // Creation is asynchronous; wait briefly so a rejection shows up here, not later.
   for (let i = 0; i < 8; i++) {
