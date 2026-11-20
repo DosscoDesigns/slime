@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin-session";
-import { traceabilityConfigured, listBulkLots, listPackLots } from "@/lib/traceability";
+import {
+  traceabilityConfigured,
+  listBulkLots,
+  listPackLots,
+  nextBulkRunNo,
+} from "@/lib/traceability";
+import AddExisting from "./add-existing";
 import { PACK_VARIANTS } from "@/lib/packaging";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +38,12 @@ export default async function Lots({
     );
   }
 
-  const [bulk, packs] = await Promise.all([listBulkLots(), listPackLots()]);
+  const [bulk, packs, nextRunNo] = await Promise.all([
+    listBulkLots(),
+    listPackLots(),
+    nextBulkRunNo(),
+  ]);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
   const needle = q?.trim().toUpperCase();
   const packMatches = needle
     ? packs.filter(
@@ -70,6 +81,8 @@ export default async function Lots({
           Logged {logged.split(",").join(", ")}.
         </p>
       ) : null}
+
+      <AddExisting nextRunNo={nextRunNo} today={today} />
 
       <section className="mb-8">
         <h2 className="mb-2 text-sm font-semibold text-zinc-300">Pack runs</h2>

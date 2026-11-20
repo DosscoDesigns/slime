@@ -101,8 +101,9 @@ export async function nextPackRunNo(): Promise<number> {
 export interface NewBulkRun {
   madeOn: string;
   runNo: number;
-  base: "poly" | "malto";
-  baseLbPerColor: number;
+  /** null for pouches counted on hand (carryover) rather than mixed here. */
+  base: "poly" | "malto" | null;
+  baseLbPerColor: number | null;
   lots: { color: SlimeColor; pouches: number }[];
   supplierLots?: string;
   notes?: string;
@@ -117,7 +118,7 @@ export async function createBulkRun(run: NewBulkRun): Promise<string[]> {
     color_code: COLOR_CODE[l.color],
     run_no: run.runNo,
     base_ingredient: run.base,
-    base_lb: run.baseLbPerColor.toFixed(2),
+    base_lb: run.base && run.baseLbPerColor ? run.baseLbPerColor.toFixed(2) : null,
     pouches_filled: l.pouches,
     supplier_lots: run.supplierLots || null,
     notes: run.notes || null,

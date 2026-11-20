@@ -288,13 +288,6 @@ export default function Planner({
               className="w-20 rounded border border-zinc-700 bg-black px-2 py-1.5 text-zinc-100"
             />
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-zinc-400">Packed by</span>
-            <input
-              name="packedBy"
-              className="w-32 rounded border border-zinc-700 bg-black px-2 py-1.5 text-zinc-100"
-            />
-          </label>
           <button
             type="submit"
             disabled={recordBlocked || pending}

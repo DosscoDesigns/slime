@@ -26,6 +26,9 @@ const posInt = (v: FormDataEntryValue | null, what: string) => {
   return n;
 };
 
+// Always the same three people; kept on the record so it can become a field later.
+const PACKED_BY = "The Slime Guys";
+
 export interface ActionState {
   error: string | null;
 }
@@ -40,13 +43,19 @@ export async function logBulkRun(_prev: ActionState, form: FormData): Promise<Ac
       pouches: Math.max(0, Math.floor(Number(form.get(`pouches_${color}`)) || 0)),
     }));
     if (lots.length === 0) throw new Error("No colors to log.");
+    // No base field = carryover pouches counted on hand, not a mix logged here.
+    const base = form.get("base");
     const baseLbPerColor = Number(form.get("baseLbPerColor"));
+    if (base === null && lots.every((l) => l.pouches === 0)) {
+      throw new Error("Enter at least one pouch count.");
+    }
     codes = await createBulkRun({
       madeOn: isoDate(form.get("madeOn")),
       runNo: posInt(form.get("runNo"), "Run #"),
-      base: form.get("base") === "malto" ? "malto" : "poly",
-      baseLbPerColor: baseLbPerColor > 0 ? baseLbPerColor : 0.01,
-      lots,
+      base: base === null ? null : base === "malto" ? "malto" : "poly",
+      baseLbPerColor: base === null ? null : baseLbPerColor > 0 ? baseLbPerColor : 0.01,
+      // A carryover color you have none of gets no lot.
+      lots: base === null ? lots.filter((l) => l.pouches > 0) : lots,
       supplierLots: String(form.get("supplierLots") ?? "").trim(),
       notes: String(form.get("notes") ?? "").trim(),
     });
@@ -78,7 +87,7 @@ export async function recordPackRun(_prev: ActionState, form: FormData): Promise
       packedOn: isoDate(form.get("packedOn")),
       runNo: posInt(form.get("runNo"), "Run #"),
       plan,
-      packedBy: String(form.get("packedBy") ?? "").trim(),
+      packedBy: PACKED_BY,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
