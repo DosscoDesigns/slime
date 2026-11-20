@@ -117,6 +117,7 @@ export interface PrintState {
 /** ZPL for a packing run's labels. Counts come from the form; content from the database. */
 async function buildLabelZpl(form: FormData): Promise<{ zpl: string; total: number }> {
   const runNo = posInt(form.get("runNo"), "Packing run");
+  const shiftDown = Math.round(Number(form.get("shiftDown")) || 0);
   const rows = await listPackLots(runNo);
   const jobs: string[] = [];
   let total = 0;
@@ -130,6 +131,7 @@ async function buildLabelZpl(form: FormData): Promise<{ zpl: string; total: numb
         title: labelTitle(v?.title ?? r.variantId),
         lotCode: r.lotCode,
         copies: n,
+        shiftDown,
       })
     );
     total += n;

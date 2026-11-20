@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { parseBrowserPrintDevice } from "@/lib/browser-print";
 import { printFbaLabels, fbaLabelZplFor, type PrintState } from "../../lots-actions";
@@ -10,6 +10,8 @@ import { printFbaLabels, fbaLabelZplFor, type PrintState } from "../../lots-acti
 const BROWSER_PRINT = "http://127.0.0.1:9100";
 
 const TEXT = { "Content-Type": "text/plain;charset=UTF-8" };
+// From the first test print: the GX420d started ~0.15" above the label edge.
+const DEFAULT_SHIFT = 30;
 
 async function printViaBrowserPrint(zpl: string): Promise<void> {
   let res: Response;
@@ -85,9 +87,28 @@ export default function LabelSheet({
     error: null,
   });
 
+  // Per-computer nudge for where this printer starts the label (dots, 203 = 1").
+  const [shift, setShift] = useState<number>(DEFAULT_SHIFT);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("slime.zebraShiftDown");
+      // Read after mount so the server and first client render agree.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (raw !== null && Number.isFinite(Number(raw))) setShift(Number(raw));
+    } catch {}
+  }, []);
+  const saveShift = (v: number) => {
+    const n = Math.max(-120, Math.min(120, Math.round(v)));
+    setShift(n);
+    try {
+      window.localStorage.setItem("slime.zebraShiftDown", String(n));
+    } catch {}
+  };
+
   const zplForm = () => {
     const f = new FormData();
     f.set("runNo", String(runNo));
+    f.set("shiftDown", String(shift));
     for (const i of items) f.set(`count_${i.key}`, String(counts[i.key] ?? 0));
     return f;
   };
@@ -181,6 +202,7 @@ export default function LabelSheet({
             </button>
             <form action={sendToZebra}>
               <input type="hidden" name="runNo" value={runNo} />
+              <input type="hidden" name="shiftDown" value={shift} />
               {items.map((i) => (
                 <input key={i.key} type="hidden" name={`count_${i.key}`} value={counts[i.key] ?? 0} />
               ))}
@@ -199,6 +221,22 @@ export default function LabelSheet({
           {local.error || zebra.error ? (
             <p className="mt-2 text-sm text-red-300">{local.error ?? zebra.error}</p>
           ) : null}
+          <label className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-zinc-400">Zebra: move label down</span>
+            <input
+              type="number"
+              step="5"
+              min="-120"
+              max="120"
+              value={shift}
+              onChange={(e) => saveShift(Number(e.target.value))}
+              className="w-20 rounded border border-zinc-700 bg-black px-2 py-1 text-right text-zinc-100"
+            />
+            <span className="text-xs text-zinc-500">
+              dots ({(shift / 203).toFixed(2)}&quot;). Barcode touching the top? Raise it. Bottom line cut off? Lower it.
+              Remembered on this computer.
+            </span>
+          </label>
           <p className="mt-2 text-xs text-zinc-500">
             Zebra: load 2¼×1¼ labels and calibrate after a roll change. Don&apos;t click twice: a slow
             printer can still be printing the first job.

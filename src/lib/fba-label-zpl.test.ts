@@ -20,6 +20,13 @@ describe("fbaLabelZpl", () => {
     expect(z).toContain("^FDLot MP-261120-03^FS");
   });
 
+  it("shifts the whole label down when asked, and refuses an out-of-range shift", () => {
+    expect(fbaLabelZpl(base)).toContain("^LT0");
+    expect(fbaLabelZpl({ ...base, shiftDown: 30 })).toContain("^LT30");
+    expect(() => fbaLabelZpl({ ...base, shiftDown: 121 })).toThrow();
+    expect(() => fbaLabelZpl({ ...base, shiftDown: 2.5 })).toThrow();
+  });
+
   it("strips ZPL control characters from the title", () => {
     const z = fbaLabelZpl({ ...base, title: "Bad ^XZ title ~JR" });
     expect(z).toContain("^FDBad XZ title JR^FS");
