@@ -10,9 +10,9 @@ function money(cents: number) {
 /**
  * Fulfilment controls.
  *
- * Three separate buttons, never one "ship it": quoting is free, buying spends
- * real money and prints paper, and emailing is outbound to a customer. Each
- * is a decision, and collapsing them would make the expensive ones accidental.
+ * Quoting is free; buying spends real money, prints, and emails the customer
+ * their tracking (with a copy to the shop inbox). The email button below is
+ * only a retry for when that automatic send failed.
  *
  * Dimensions and weight are typed in because the real per-tier weights are
  * still unknown — see scripts/ship-order.mjs for the same reasoning.
@@ -142,7 +142,7 @@ export default function Fulfil({
               >
                 {buying ? "Buying…" : "Buy label + print"}
               </button>
-              <span className="ml-3 text-xs text-zinc-600">Spends money. Prints to the Zebra 4x6.</span>
+              <span className="ml-3 text-xs text-zinc-600">Spends money. Prints to the Zebra 4x6 and emails the customer tracking.</span>
             </form>
           ) : null}
         </>
@@ -159,10 +159,10 @@ export default function Fulfil({
           disabled={mailing || !hasTracking || cancelled}
           className="rounded-full border border-zinc-700 px-5 py-2 text-xs font-bold uppercase tracking-wider hover:border-lime-500 disabled:opacity-40"
         >
-          {mailing ? "Sending…" : "Email customer tracking"}
+          {mailing ? "Sending…" : "Resend tracking email"}
         </button>
         <span className="ml-3 text-xs text-zinc-600">
-          {hasTracking ? "Outbound to the customer." : "Needs a tracking number first."}
+          {hasTracking ? "Sent automatically when the label is bought; use this only if that failed." : "Sent automatically when the label is bought."}
         </span>
       </form>
       {mail?.message ? (
