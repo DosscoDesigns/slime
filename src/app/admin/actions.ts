@@ -35,7 +35,7 @@ export interface ActionResult {
   ok: boolean;
   message: string;
   /** Set on a successful quote so the UI can offer the rate. */
-  rates?: Array<{ id: string; label: string; amountCents: number; days: number | null }>;
+  rates?: Array<{ id: string; label: string; amountCents: number; days: number | null; token: string }>;
   /**
    * A label was purchased (money spent), even if a later step failed. The UI
    * uses it to drop the rate picker — including when Stripe wasn't updated and
@@ -165,6 +165,7 @@ export async function quoteShipping(
         label: `${r.provider} ${r.service}`,
         amountCents: r.amountCents,
         days: r.estimatedDays,
+        token: r.serviceToken,
       })),
     };
   } catch (err) {

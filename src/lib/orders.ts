@@ -91,6 +91,14 @@ export interface Order {
   /** Refunds are issued against the charge, so the id has to travel with it. */
   chargeId: string | null;
 
+  /**
+   * The shipping service the customer picked at checkout (Shippo token, e.g.
+   * "ups_ground_saver") and what the carrier quoted for it. Null on orders
+   * from before live rates, or when checkout used the fallback rate.
+   */
+  shippingServiceToken: string | null;
+  shippingQuoteCents: number | null;
+
   /** What the postage actually cost us, when known. */
   shippingCostCents: number | null;
   labelBoughtAt: Date | null;
@@ -243,6 +251,8 @@ export function toOrder(pi: Stripe.PaymentIntent, charge: Stripe.Charge | null):
     shipTo: shipping?.address ?? charge?.billing_details?.address ?? null,
     receiptUrl: charge?.receipt_url ?? null,
     chargeId: charge?.id ?? null,
+    shippingServiceToken: md.shipping_service_token || null,
+    shippingQuoteCents: md.shipping_quote_cents && md.shipping_service_token ? num(md.shipping_quote_cents) : null,
     shippingCostCents: md.shipping_cost_cents ? num(md.shipping_cost_cents) : null,
     labelBoughtAt: date(md.label_bought_at),
     shippingEmailSentAt: date(md.shipping_email_sent_at),

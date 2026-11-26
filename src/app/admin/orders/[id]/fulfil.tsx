@@ -21,11 +21,16 @@ export default function Fulfil({
   orderId,
   hasTracking,
   shippingChargedCents,
+  customerServiceToken,
+  customerQuoteCents,
   cancelled,
 }: {
   orderId: string;
   hasTracking: boolean;
   shippingChargedCents: number;
+  /** The service the customer chose at checkout; pre-selected when it's quoted. */
+  customerServiceToken?: string | null;
+  customerQuoteCents?: number | null;
   /** Cancelled orders refuse every action below; the server enforces it too. */
   cancelled: boolean;
 }) {
@@ -43,7 +48,10 @@ export default function Fulfil({
   // The first rate renders pre-checked, so it must also be what's submitted —
   // and a re-quote must not leave a stale id from the previous rate list.
   const rates = quote?.rates ?? [];
-  const selectedRateId = rates.some((r) => r.id === rateId) ? rateId : (rates[0]?.id ?? "");
+  const customerRate = rates.find((r) => r.token === customerServiceToken);
+  const selectedRateId = rates.some((r) => r.id === rateId)
+    ? rateId
+    : (customerRate?.id ?? rates[0]?.id ?? "");
 
   const field =
     "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-lime-500";
@@ -59,6 +67,14 @@ export default function Fulfil({
         </p>
       ) : null}
 
+      {customerServiceToken ? (
+        <p className="mb-4 text-sm text-zinc-400">
+          Customer chose <span className="font-semibold text-zinc-200">{customerServiceToken}</span>
+          {customerQuoteCents != null ? <> (quoted {money(customerQuoteCents)} at checkout)</> : null}.
+          {" "}It&apos;s pre-selected when the rates come back.
+        </p>
+      ) : null}
+
       {labelDone ? (
         <p className="mb-4 text-sm text-zinc-500">
           Label purchased. Rates are hidden so a second label can&apos;t be bought by accident.
@@ -69,10 +85,10 @@ export default function Fulfil({
             <input type="hidden" name="orderId" value={orderId} />
             <div className="grid grid-cols-4 gap-2">
               {[
-                ["length", "L in", "9"],
-                ["width", "W in", "6"],
-                ["height", "H in", "3"],
-                ["weight", "lb", "1.44"],
+                ["length", "L in", "10"],
+                ["width", "W in", "8"],
+                ["height", "H in", "5"],
+                ["weight", "lb", "1.0"],
               ].map(([name, label, placeholder]) => (
                 <label key={name} className="block">
                   <span className="mb-1 block text-[11px] uppercase tracking-wider text-zinc-500">
@@ -121,7 +137,12 @@ export default function Fulfil({
                           onChange={() => setRateId(r.id)}
                           className="accent-lime-400"
                         />
-                        <span className="flex-1">{r.label}</span>
+                        <span className="flex-1">
+                          {r.label}
+                          {r.token === customerServiceToken ? (
+                            <span className="ml-2 text-[11px] uppercase tracking-wider text-lime-400">customer&apos;s pick</span>
+                          ) : null}
+                        </span>
                         <span className="text-xs text-zinc-500">{r.days ?? "?"}d</span>
                         <span className="font-semibold">{money(r.amountCents)}</span>
                         <span

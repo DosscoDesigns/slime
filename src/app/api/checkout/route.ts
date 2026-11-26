@@ -85,10 +85,10 @@ export async function POST(request: NextRequest) {
 
     const stripe = getStripe();
 
-    // No ship-to address yet at intent creation, so tax is 0 until the
-    // customer enters a FL address (recomputed in /update-amount). Shipping
-    // and any coupon discount don't depend on destination.
-    const totals = await resolveOrderTotals(stripe, priced, body.couponCode);
+    // No ship-to address yet at intent creation, so shipping and tax are 0
+    // until /update-amount quotes the address. The client refuses to confirm
+    // payment until that sync has succeeded, so this amount is never charged.
+    const totals = await resolveOrderTotals(stripe, priced, body.couponCode, null, null, 0);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totals.totalCents,

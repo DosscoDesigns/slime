@@ -5,10 +5,6 @@ import {
   type KitTier,
 } from "@/lib/products";
 import {
-  SHIPPING_FLAT_CENTS,
-  SHIPPING_FREE_THRESHOLD_CENTS,
-} from "@/lib/pricing";
-import {
   CONTACT_EMAIL,
   LEGAL_NAME,
   SITE_DESCRIPTION,
@@ -62,41 +58,13 @@ function priceValidUntil(): string {
   return d.toISOString().slice(0, 10);
 }
 
-const shippingDetails = {
-  "@type": "OfferShippingDetails",
-  shippingRate: {
-    "@type": "MonetaryAmount",
-    value: usd(SHIPPING_FLAT_CENTS),
-    currency: "USD",
-  },
-  shippingDestination: {
-    "@type": "DefinedRegion",
-    addressCountry: "US",
-  },
-  freeShippingThreshold: {
-    "@type": "DeliveryChargeSpecification",
-    eligibleTransactionVolume: {
-      "@type": "PriceSpecification",
-      price: usd(SHIPPING_FREE_THRESHOLD_CENTS),
-      priceCurrency: "USD",
-    },
-  },
-  deliveryTime: {
-    "@type": "ShippingDeliveryTime",
-    handlingTime: {
-      "@type": "QuantitativeValue",
-      minValue: 1,
-      maxValue: 3,
-      unitCode: "DAY",
-    },
-    transitTime: {
-      "@type": "QuantitativeValue",
-      minValue: 5,
-      maxValue: 7,
-      unitCode: "DAY",
-    },
-  },
-};
+/*
+ * No shippingDetails. Shipping is a live carrier quote at checkout, which
+ * OfferShippingDetails can't express (it needs one fixed shippingRate), and
+ * a fixed number here would contradict both the checkout and Merchant
+ * Center's carrier-calculated service. Google treats the property as
+ * recommended, not required, and takes shipping from Merchant Center.
+ */
 
 /**
  * Mirrors /shipping-returns: 30 days, by mail, and on a change-of-mind return
@@ -152,7 +120,6 @@ export function productNode(tier: KitTier) {
       availability: "https://schema.org/InStock",
       itemCondition: "https://schema.org/NewCondition",
       seller: { "@id": `${SITE_URL}/#organization` },
-      shippingDetails,
       hasMerchantReturnPolicy: returnPolicy,
     },
   };

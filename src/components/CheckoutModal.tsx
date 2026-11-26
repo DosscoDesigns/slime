@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useCallback, useRef, FormEvent } from "react";
+import { useState, useCallback, useRef, useEffect, FormEvent } from "react";
 import { loadStripe, StripeElementsOptions } from "@stripe/stripe-js";
 import {
   Elements,
@@ -62,6 +62,19 @@ interface Breakdown {
   shippingCents: number;
   taxCents: number;
   totalCents: number;
+  /** Present once an address has been quoted. */
+  shippingOptions?: { id: string; label: string; cents: number; days: number | null }[];
+  shippingOptionId?: string;
+  shippingQuoted?: boolean;
+}
+
+interface ShipTo {
+  line1?: string | null;
+  line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
 }
 
 function cartPayload(items: CartItem[]) {
@@ -101,25 +114,33 @@ function CheckoutForm({
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
-  // Last known ship-to, replayed when only the coupon changes.
-  const addressRef = useRef<{ country?: string; state?: string }>({});
+  // Last known ship-to and shipping choice, replayed when only the coupon
+  // (or only the option) changes.
+  const addressRef = useRef<ShipTo | null>(null);
+  const optionRef = useRef<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
   // One add_shipping_info per checkout — see the AddressElement onChange below.
   const shippingTrackedRef = useRef(false);
 
   const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-  // Recompute shipping + FL tax whenever the customer completes/edits their
-  // shipping address. The server updates the PaymentIntent amount and returns
-  // the fresh breakdown.
+  // Recompute shipping (a live carrier quote) + FL tax whenever the address,
+  // the shipping option or the coupon changes. The server updates the
+  // PaymentIntent amount and returns the fresh breakdown. Only an option ID
+  // is sent; the server prices it.
   const syncAmount = useCallback(
     async (
-      country?: string,
-      state?: string,
-      couponOverride?: string | null
+      couponOverride?: string | null,
+      optionOverride?: string | null
     ): Promise<Breakdown | null> => {
       if (!paymentIntentId) return null;
       const coupon =
         couponOverride === undefined ? appliedCode : couponOverride;
+      const option =
+        optionOverride === undefined ? optionRef.current : optionOverride;
       setUpdating(true);
       try {
         const res = await fetch("/api/checkout/update-amount", {
@@ -128,14 +149,15 @@ function CheckoutForm({
           body: JSON.stringify({
             paymentIntentId,
             items: cartPayload(items),
-            country,
-            state,
+            address: addressRef.current ?? undefined,
             couponCode: coupon ?? "",
+            shippingOptionId: option ?? undefined,
           }),
         });
         if (res.ok) {
           const b = (await res.json()) as Breakdown;
           setBreakdown(b);
+          optionRef.current = b.shippingOptionId ?? null;
           return b;
         }
       } catch {
@@ -154,11 +176,7 @@ function CheckoutForm({
     async (raw: string | null) => {
       setApplying(true);
       setCodeError(null);
-      const b = await syncAmount(
-        addressRef.current.country,
-        addressRef.current.state,
-        raw
-      );
+      const b = await syncAmount(raw);
       if (b) {
         if (b.couponCode) {
           setAppliedCode(b.couponCode);
@@ -193,18 +211,27 @@ function CheckoutForm({
 
     // Final amount sync from the entered address so the charged total matches
     // the displayed total (covers the case where the address changed but the
-    // onChange update hadn't completed).
+    // debounced update hadn't run). If it fails, stop: the PaymentIntent may
+    // still hold a stale amount.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     const addressEl = elements.getElement(AddressElement);
+    let finalBreakdown: Breakdown | null = null;
     if (addressEl) {
       const { complete, value } = await addressEl.getValue();
       if (complete) {
-        await syncAmount(value.address.country, value.address.state);
+        addressRef.current = value.address;
+        finalBreakdown = await syncAmount();
       }
+    }
+    if (!finalBreakdown) {
+      setError("We couldn't calculate shipping for that address. Check it and try again.");
+      setLoading(false);
+      return;
     }
 
     // The last event before money moves. Its gap to `purchase` (sent
     // server-side from the webhook) is the payment-failure rate.
-    const finalCents = breakdown.totalCents || breakdown.subtotalCents;
+    const finalCents = finalBreakdown.totalCents || finalBreakdown.subtotalCents;
     trackAddPaymentInfo(items, finalCents, appliedCode);
 
     // Hand the total to /success for Plausible's revenue goal. Stripe's
@@ -252,28 +279,67 @@ function CheckoutForm({
             options={{ mode: "shipping", allowedCountries: ["US"] }}
             onChange={(e) => {
               if (e.complete) {
-                addressRef.current = {
-                  country: e.value.address.country,
-                  state: e.value.address.state,
-                };
-                const sync = syncAmount(
-                  e.value.address.country,
-                  e.value.address.state
-                );
-                // Fire ONCE. This handler runs on every keystroke after the
-                // address first validates, so an unguarded event would report
-                // dozens of shipping steps for one customer and make the
-                // shipping-to-payment drop-off meaningless.
-                if (!shippingTrackedRef.current) {
-                  shippingTrackedRef.current = true;
-                  sync.then((b) =>
-                    trackAddShippingInfo(items, b?.totalCents ?? 0)
-                  );
-                }
+                addressRef.current = e.value.address;
+                // Debounced: this handler runs on every keystroke after the
+                // address first validates, and each sync can be a live
+                // carrier quote.
+                if (debounceRef.current) clearTimeout(debounceRef.current);
+                debounceRef.current = setTimeout(() => {
+                  const sync = syncAmount();
+                  // Fire ONCE, or one customer reports dozens of shipping
+                  // steps and the shipping-to-payment drop-off means nothing.
+                  if (!shippingTrackedRef.current) {
+                    shippingTrackedRef.current = true;
+                    sync.then((b) =>
+                      trackAddShippingInfo(items, b?.totalCents ?? 0)
+                    );
+                  }
+                }, 600);
               }
             }}
           />
         </div>
+        {breakdown.shippingOptions && breakdown.shippingOptions.length > 0 && (
+          <fieldset>
+            <legend className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Shipping Method</legend>
+            <div className="space-y-2">
+              {breakdown.shippingOptions.map((o) => (
+                <label
+                  key={o.id}
+                  className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm cursor-pointer transition-colors ${
+                    o.id === breakdown.shippingOptionId
+                      ? "border-lime bg-lime/5 text-white"
+                      : "border-white/10 text-gray-300 hover:border-white/25"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="shipping-option"
+                    value={o.id}
+                    checked={o.id === breakdown.shippingOptionId}
+                    disabled={updating || loading}
+                    onChange={() => {
+                      optionRef.current = o.id;
+                      syncAmount(undefined, o.id);
+                    }}
+                    className="accent-lime-400"
+                  />
+                  <span className="flex-1">
+                    {o.label}
+                    {o.days ? (
+                      <span className="block text-xs text-gray-500">
+                        About {o.days} business day{o.days === 1 ? "" : "s"} in transit
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className={o.cents === 0 ? "text-lime font-semibold" : "font-medium"}>
+                    {o.cents === 0 ? "Free" : money(o.cents)}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
         <div>
           <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Payment</h3>
           <PaymentElement options={{ layout: "tabs" }} />
@@ -357,7 +423,11 @@ function CheckoutForm({
         )}
         <div className="flex justify-between text-sm text-gray-400">
           <span>Shipping</span>
-          {breakdown.shippingCents === 0 ? (
+          {updating ? (
+            <span className="italic opacity-60">updating…</span>
+          ) : !breakdown.shippingOptions ? (
+            <span className="italic opacity-60">Enter address</span>
+          ) : breakdown.shippingCents === 0 ? (
             <span className="text-lime font-semibold">Free</span>
           ) : (
             <span>{money(breakdown.shippingCents)}</span>

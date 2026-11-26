@@ -12,7 +12,6 @@ import {
   type KitTier,
 } from "@/lib/products";
 import {
-  SHIPPING_FLAT_CENTS,
   SHIPPING_FREE_THRESHOLD_CENTS,
 } from "@/lib/pricing";
 import { SITE_NAME, SITE_URL, absoluteUrl, pageMetadata } from "@/lib/site";
@@ -159,7 +158,7 @@ export default async function KitPage({
                 </span>
               </div>
               <p className="text-gray-500 text-sm mb-8">
-                {usd(SHIPPING_FLAT_CENTS)} flat shipping · free over{" "}
+                Shipping calculated at checkout · free over{" "}
                 {usd(SHIPPING_FREE_THRESHOLD_CENTS)} · ships in 1–3 business
                 days
               </p>
@@ -288,7 +287,7 @@ export default async function KitPage({
               Shipping and returns
             </h2>
             <p className="text-gray-400 leading-relaxed mb-4">
-              Ships from Florida via USPS, {usd(SHIPPING_FLAT_CENTS)} flat and
+              Ships from Florida by UPS or USPS at the live carrier rate, and
               free over {usd(SHIPPING_FREE_THRESHOLD_CENTS)}. Packed within 1–3
               business days, then typically 5–7 business days in transit.
               Unopened kits can be returned within 30 days.

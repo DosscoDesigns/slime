@@ -248,8 +248,13 @@ export interface RateQuote {
  * will never use. Do not treat a non-empty messages array as failure; treat an
  * empty `rates` array as failure.
  */
-export async function getRates(to: Address, parcel: Parcel): Promise<RateQuote> {
-  const res = await shippo<ShippoShipmentResponse>("/shipments/", {
+export async function getRates(
+  to: Address,
+  parcel: Parcel,
+  /** Checkout passes a short budget so a slow Shippo falls back instead of hanging the page. */
+  timeoutMs: number = WRITE_TIMEOUT_MS
+): Promise<RateQuote> {
+  const res = await shippoRequest<ShippoShipmentResponse>("POST", "/shipments/", {
     address_from: toShippoAddress(shipFromAddress()),
     address_to: toShippoAddress(to),
     parcels: [
@@ -263,7 +268,7 @@ export async function getRates(to: Address, parcel: Parcel): Promise<RateQuote> 
       },
     ],
     async: false,
-  });
+  }, timeoutMs);
 
   const rates: Rate[] = (res.rates ?? [])
     .map((r) => ({
