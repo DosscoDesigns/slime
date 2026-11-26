@@ -1,10 +1,7 @@
 import PageShell from "@/components/PageShell";
 import { CONTACT_EMAIL, pageMetadata } from "@/lib/site";
-import {
-  SHIPPING_FLAT_CENTS,
-  SHIPPING_FREE_THRESHOLD_CENTS,
-  FL_TAX_RATE,
-} from "@/lib/pricing";
+import { SHIPPING_FREE_THRESHOLD_CENTS, FL_TAX_RATE } from "@/lib/pricing";
+import { HANDLING_CENTS, SERVICE_OPTIONS } from "@/lib/shipping-config";
 
 /**
  * Shipping and returns, at a real URL.
@@ -16,11 +13,11 @@ import {
  * an assertion with nothing behind it is exactly the kind of mismatch that
  * gets an account suspended rather than merely warned.
  *
- * Every number here is read from pricing.ts. Typing "$5.99" into the prose is
+ * Every number here is read from pricing.ts / shipping-config.ts. Typing a number into the prose is
  * how the policy ends up contradicting the checkout after a price change.
  */
 
-const LAST_UPDATED = "2026-09-09";
+const LAST_UPDATED = "2026-11-25";
 
 const usd = (cents: number) =>
   `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
@@ -28,7 +25,7 @@ const usd = (cents: number) =>
 export const metadata = pageMetadata({
   title: "Shipping & Returns",
   description:
-    "How Slime Co orders ship: US delivery via USPS, processing and delivery times, flat-rate and free shipping thresholds, and our 30-day return policy.",
+    "How Slime Co orders ship: US delivery by UPS or USPS, processing and delivery times, live shipping rates with free shipping over $100, and our 30-day return policy.",
   path: "/shipping-returns",
 });
 
@@ -44,8 +41,8 @@ export default function ShippingReturnsPage() {
       <h3>Where we ship</h3>
       <p>
         We ship to addresses within the <strong>United States only</strong>,
-        including Alaska and Hawaii. We do not currently ship internationally or
-        to PO boxes outside the USPS network. Orders ship from Florida.
+        including Alaska and Hawaii. We do not currently ship internationally.
+        PO boxes can only be shipped by USPS. Orders ship from Florida.
       </p>
 
       <h3>Processing and delivery time</h3>
@@ -57,7 +54,8 @@ export default function ShippingReturnsPage() {
         being placed.
       </p>
       <p>
-        Kits ship via <strong>USPS Ground Advantage</strong>. If you are
+        Orders ship by <strong>{SERVICE_OPTIONS[0].label}</strong> unless you
+        choose a faster option at checkout. If you are
         ordering for a dated event, order at least two weeks ahead — and if you
         are closer than that, email us before you order and we will tell you
         honestly whether it will make it.
@@ -66,13 +64,15 @@ export default function ShippingReturnsPage() {
       <h3>Shipping cost</h3>
       <ul>
         <li>
-          Flat <strong>{usd(SHIPPING_FLAT_CENTS)}</strong> per order, no matter
-          how many kits are on it.
+          Calculated at checkout from your address, using the carrier&apos;s
+          live rate plus {usd(HANDLING_CENTS)} for packing and handling. You
+          choose the service:{" "}
+          {SERVICE_OPTIONS.map((s) => s.label).join(", ")}.
         </li>
         <li>
-          <strong>Free</strong> on orders of{" "}
+          <strong>Free {SERVICE_OPTIONS[0].label}</strong> on orders of{" "}
           {usd(SHIPPING_FREE_THRESHOLD_CENTS)} or more, before any discount
-          code is applied.
+          code is applied. Faster options cost only the difference.
         </li>
         <li>
           Florida addresses are charged {(FL_TAX_RATE * 100).toFixed(1)}% sales

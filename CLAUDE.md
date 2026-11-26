@@ -106,9 +106,26 @@ production release** — there is no staging step. Live keys are on
 - **`computeOrderTotals()` in `src/lib/pricing.ts` is the single place totals are
   assembled** — both `/api/checkout` and `/api/checkout/update-amount` call it. Don't
   reintroduce per-route math.
-- **Shipping:** US only. Flat $5.99, free at $100+ subtotal (tested *pre*-discount so a
-  coupon can't push an order under the line and raise the total). FL sales tax 7.5% on
-  the discounted subtotal, never on shipping.
+- **Shipping is a live Shippo quote at checkout** (since 2026-11-25). `/api/checkout/update-amount`
+  turns the cart into one parcel (`parcelForCart`), quotes the address, and offers the services
+  in `SERVICE_OPTIONS`, defaulting to the cheapest UPS ground service, at carrier rate + $1.50
+  handling. Free default service at $100+ subtotal (tested *pre*-discount, so a coupon can't push
+  an order under the line); upgrades then cost only the difference. If Shippo fails, the order
+  goes through at a flat $7.99. PO boxes get USPS only (UPS can't deliver to them).
+  **Weights, boxes, handling and the service list are in `src/lib/shipping-config.ts`.** That is
+  the table to update when a real scale reading replaces an estimate.
+- **The client sends only a shipping option ID, never an amount.** The quote is cached in the
+  PaymentIntent's metadata (`ship_quote`, keyed on address + parcel + subtotal), which only our
+  routes write. Checkout refuses to confirm payment until a final sync succeeds; the initial
+  PaymentIntent carries no shipping.
+- **FL sales tax** 7.5% on the discounted subtotal, never on shipping.
+- **Google shipping:** the feed carries per-kit shipping weight and dimensions, and the JSON-LD
+  has no `shippingDetails` (a fixed rate would contradict live quotes). Merchant Center's
+  account-level service must be **carrier-calculated** (UPS Ground from 32003, +$1.50, free at
+  $100+). Until that is set, `CARRIER_CALCULATED_IN_MERCHANT_CENTER = false` in the feed route
+  keeps a $7.99 fallback price in the feed; flip it once MC is configured.
+- **Tracking email** goes out automatically when a label is bought in the admin, with a separate
+  copy to info@. Order notifications (`ORDER_NOTIFICATION_EMAIL`) also go to info@.
 - **Webhook:** `/api/webhook` on `payment_intent.succeeded` → Mailgun order email.
   The live endpoint is pinned to API version **2020-08-27**, which predates
   `latest_charge` — `resolveCharge()` handles that; don't "simplify" it back.

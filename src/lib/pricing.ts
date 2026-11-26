@@ -1,12 +1,12 @@
-// Single source of truth for shipping + tax, shared by the checkout
-// route (initial PaymentIntent) and the update-amount route (recompute on
-// address change). Mirrors rkpm's flat-rate, ship-to-driven approach.
+// Single source of truth for order totals, shared by the checkout route
+// (initial PaymentIntent) and the update-amount route (recompute on address
+// or shipping-option change). Shipping itself is quoted live from Shippo by
+// shipping-quote.ts; this file only applies it.
 
 import { priceKitCents, kitLineName } from "./products";
 import { applyCoupon } from "./coupons";
 
-/** Flat shipping fee (cents) applied to orders below the free threshold. */
-export const SHIPPING_FLAT_CENTS = 599;
+import { SHIPPING_FALLBACK_CENTS } from "./shipping-config";
 
 /**
  * Order subtotal (cents) at/above which shipping is free.
@@ -90,9 +90,12 @@ export function priceCart(items: CartLineInput[]): PricedCart {
   };
 }
 
-/** Shipping: free at/above the threshold, flat fee below. */
+/**
+ * Shipping when there is no live quote: before the address is entered, or
+ * when Shippo fails. Free at/above the threshold, the fallback rate below.
+ */
 export function computeShippingCents(subtotalCents: number): number {
-  return subtotalCents >= SHIPPING_FREE_THRESHOLD_CENTS ? 0 : SHIPPING_FLAT_CENTS;
+  return subtotalCents >= SHIPPING_FREE_THRESHOLD_CENTS ? 0 : SHIPPING_FALLBACK_CENTS;
 }
 
 /** FL ship-to only; tax on subtotal (not shipping), mirroring rkpm. */
@@ -125,10 +128,11 @@ export interface OrderTotals {
  * Order of operations, deliberately:
  *   1. subtotal from the server-recomputed cart
  *   2. coupon discount, clamped to the subtotal
- *   3. free-shipping threshold tested against the PRE-discount subtotal, so a
- *      coupon can never push an order back under the threshold. Testing it
- *      post-discount meant that on a $100–$104.99 subtotal, applying $5 off
- *      lost free shipping and the customer's total went UP by $0.99.
+ *   3. shipping: the live quote the caller passes in (shipping-quote.ts),
+ *      else computeShippingCents. Both test the free-shipping threshold
+ *      against the PRE-discount subtotal, so a coupon can never push an order
+ *      back under it. Testing it post-discount meant that on a $100–$104.99
+ *      subtotal, applying $5 off lost free shipping and RAISED the total.
  *   4. FL tax on the DISCOUNTED subtotal, and never on shipping — a seller
  *      discount reduces taxable receipts
  */
@@ -136,11 +140,16 @@ export function computeOrderTotals(
   priced: PricedCart,
   couponCodeRaw: unknown,
   country?: string | null,
-  state?: string | null
+  state?: string | null,
+  /** A live quote's price for the chosen option. Omitted: computeShippingCents. */
+  quotedShippingCents?: number
 ): OrderTotals {
   const coupon = applyCoupon(couponCodeRaw, priced.subtotalCents);
   const discountedSubtotal = priced.subtotalCents - coupon.discountCents;
-  const shippingCents = computeShippingCents(priced.subtotalCents);
+  const shippingCents =
+    quotedShippingCents !== undefined && Number.isInteger(quotedShippingCents) && quotedShippingCents >= 0
+      ? quotedShippingCents
+      : computeShippingCents(priced.subtotalCents);
   const taxCents = computeTaxCents(discountedSubtotal, country, state);
 
   return {

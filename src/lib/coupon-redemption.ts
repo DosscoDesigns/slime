@@ -79,7 +79,8 @@ export async function resolveOrderTotals(
   priced: PricedCart,
   couponCodeRaw: unknown,
   country?: string | null,
-  state?: string | null
+  state?: string | null,
+  quotedShippingCents?: number
 ): Promise<OrderTotals> {
   const coupon = lookupCoupon(couponCodeRaw);
 
@@ -88,10 +89,10 @@ export async function resolveOrderTotals(
       coupon_code: coupon.code,
     });
     return {
-      ...computeOrderTotals(priced, null, country, state),
+      ...computeOrderTotals(priced, null, country, state, quotedShippingCents),
       couponError: ALREADY_REDEEMED_MESSAGE,
     };
   }
 
-  return computeOrderTotals(priced, couponCodeRaw, country, state);
+  return computeOrderTotals(priced, couponCodeRaw, country, state, quotedShippingCents);
 }

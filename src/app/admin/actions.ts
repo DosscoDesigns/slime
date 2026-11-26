@@ -18,6 +18,8 @@ import { parseAmountToCents } from "@/lib/money-input";
 import { fetchTrack, isTerminal, registerTracking } from "@/lib/tracking";
 import { renderShippingNotice } from "@/lib/order-email";
 import { sendMail } from "@/lib/mailgun";
+import { CONTACT_EMAIL } from "@/lib/site";
+import { isCarrier } from "@/lib/carriers";
 import { printZpl } from "@/lib/print";
 import {
   getRates,
@@ -33,7 +35,7 @@ export interface ActionResult {
   ok: boolean;
   message: string;
   /** Set on a successful quote so the UI can offer the rate. */
-  rates?: Array<{ id: string; label: string; amountCents: number; days: number | null }>;
+  rates?: Array<{ id: string; label: string; amountCents: number; days: number | null; token: string }>;
   /**
    * A label was purchased (money spent), even if a later step failed. The UI
    * uses it to drop the rate picker — including when Stripe wasn't updated and
@@ -163,6 +165,7 @@ export async function quoteShipping(
         label: `${r.provider} ${r.service}`,
         amountCents: r.amountCents,
         days: r.estimatedDays,
+        token: r.serviceToken,
       })),
     };
   } catch (err) {
@@ -180,7 +183,8 @@ export async function quoteShipping(
  * recoverable — the label can be reprinted from its URL — so a print error is
  * reported without discarding the purchase.
  *
- * The customer is NOT emailed here. That is a separate, explicit action.
+ * The customer IS emailed here once the label exists (Jason, 2026-11-25), with
+ * a copy to the shop inbox. The separate email action remains only as a retry.
  */
 export async function buyAndPrintLabel(
   _prev: unknown,
@@ -258,24 +262,99 @@ export async function buyAndPrintLabel(
     });
   }
 
+  let printNote = "printed";
   try {
     const zpl = await fetchLabelZpl(label.labelUrl);
     await printZpl({ zpl, printer: "4x6" });
   } catch (err) {
     logError("label bought but not printed", { orderId, ...errorContext(err) });
+    printNote = `NOT printed (${err instanceof Error ? err.message : "unknown"}) — reprint from Shippo`;
+  }
+
+  // The customer is emailed as soon as the label exists. A failure here never
+  // un-does the purchase; the "Email customer tracking" button stays as the
+  // retry, and it refuses to double-send once this has succeeded.
+  const mailed = await sendShippingNotice(stripe, orderId, order, {
+    number: label.trackingNumber,
+    carrier: (label.provider || "usps").toLowerCase(),
+  });
+
+  return {
+    ok: true,
+    labelBought: true,
+    message: `Label bought — ${label.trackingNumber}. Label ${printNote}. ${mailed.message}`,
+  };
+}
+
+/**
+ * Send the shipped-with-tracking email to the customer, then a SEPARATE copy to
+ * the shop inbox. Two messages rather than a BCC: see mailgun.ts for why a
+ * BCC'd send gets deduped by mail clients.
+ *
+ * Only a successful customer send writes shipping_email_sent_at; the shop copy
+ * is best-effort and never blocks or fails the customer's notice.
+ */
+async function sendShippingNotice(
+  stripe: ReturnType<typeof getStripe>,
+  orderId: string,
+  order: Order,
+  tracking: { number: string; carrier: string }
+): Promise<ActionResult> {
+  if (!order.customerEmail) {
+    return { ok: false, message: "No customer email on this order — tracking NOT emailed." };
+  }
+
+  let mail;
+  try {
+    const pi = await stripe.paymentIntents.retrieve(orderId);
+    const charge = await resolveCharge(stripe, pi);
+    mail = renderShippingNotice({
+      pi,
+      charge,
+      tracking: tracking.number,
+      // An unknown provider string falls back to guessing from the number's shape.
+      carrier: isCarrier(tracking.carrier) ? tracking.carrier : undefined,
+    });
+    await sendMail({ to: order.customerEmail, ...mail });
+  } catch (err) {
+    logError("shipping notice failed to send", { orderId, ...errorContext(err) });
     return {
-      ok: true,
-      labelBought: true,
-      message: `Label bought (${label.trackingNumber}) but printing failed: ${
-        err instanceof Error ? err.message : "unknown"
-      }. Tracking is saved; reprint from Shippo.`,
+      ok: false,
+      message: `Tracking email FAILED (${err instanceof Error ? err.message : "unknown"}) — use the email button to retry.`,
     };
   }
 
-  return { ok: true, labelBought: true, message: `Label bought and printed — ${label.trackingNumber}` };
+  // Writes ONLY the key this function owns: a snapshot write-back would race an
+  // inbound tracking webhook and silently revert it.
+  try {
+    await patchOrderMetadata(stripe, orderId, {
+      shipping_email_sent_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    logError("shipping notice sent but not recorded — the button may resend it", {
+      orderId,
+      ...errorContext(err),
+    });
+  }
+
+  if (CONTACT_EMAIL.toLowerCase() !== order.customerEmail.toLowerCase()) {
+    try {
+      await sendMail({
+        to: CONTACT_EMAIL,
+        subject: `[Copy to shop] ${mail.subject} · sent to ${order.customerEmail}`,
+        text: mail.text,
+        html: mail.html,
+      });
+    } catch (err) {
+      logWarn("shop copy of shipping notice failed", { orderId, ...errorContext(err) });
+    }
+  }
+
+  revalidateOrder(orderId);
+  return { ok: true, message: `Tracking emailed to ${order.customerEmail} (copy to ${CONTACT_EMAIL}).` };
 }
 
-/** Tell the customer it shipped. Outbound mail; deliberately its own button. */
+/** Retry the shipped email by hand, for when the automatic send at label purchase failed. */
 export async function emailCustomer(
   _prev: unknown,
   formData: FormData
@@ -291,33 +370,10 @@ export async function emailCustomer(
   if (order.shippingEmailSentAt) {
     return { ok: false, message: `Already emailed ${order.shippingEmailSentAt.toISOString()} — refusing to double-send.` };
   }
-  if (!order.customerEmail) return { ok: false, message: "No customer email on this order." };
-
-  const pi = await stripe.paymentIntents.retrieve(orderId);
-  const charge = await resolveCharge(stripe, pi);
-
-  const mail = renderShippingNotice({
-    pi,
-    charge,
-    tracking: order.tracking.number,
+  return sendShippingNotice(stripe, orderId, order, {
+    number: order.tracking.number,
     carrier: order.tracking.carrier,
   });
-  try {
-    await sendMail({ to: order.customerEmail, ...mail });
-  } catch (err) {
-    logError("admin shipping notice failed to send", { orderId, ...errorContext(err) });
-    return { ok: false, message: err instanceof Error ? err.message : "Send failed." };
-  }
-
-  // Writes ONLY the key this action owns. The previous version snapshotted the
-  // whole metadata map before the send above, then wrote that snapshot back
-  // afterwards — a multi-second window in which an inbound tracking update
-  // would be silently reverted.
-  await patchOrderMetadata(stripe, orderId, {
-    shipping_email_sent_at: new Date().toISOString(),
-  });
-  revalidateOrder(orderId);
-  return { ok: true, message: `Emailed ${order.customerEmail}` };
 }
 
 /* ────────────────────────────────────────────────────────────────────────────

@@ -30,6 +30,14 @@ registerHooks({
         shortCircuit: true,
       };
     }
+    // App code imports siblings without an extension ("./carriers"), which
+    // Node's resolver refuses. Try the .ts file.
+    if (specifier.startsWith(".") && !path.extname(specifier) && context.parentURL?.endsWith(".ts")) {
+      return {
+        url: new URL(`${specifier}.ts`, context.parentURL).href,
+        shortCircuit: true,
+      };
+    }
     return nextResolve(specifier, context);
   },
 });
@@ -114,6 +122,24 @@ const res = await fetch(`https://api.mailgun.net/v3/${mgDomain}/messages`, {
 });
 if (!res.ok) throw new Error(`Mailgun ${res.status}: ${await res.text()}`);
 console.log("SENT:", JSON.stringify(await res.json()));
+
+// A separate copy to the shop inbox, same as the admin portal sends. Not a
+// BCC: see src/lib/mailgun.ts.
+const SHOP = "info@theslimecompany.com";
+if (to.toLowerCase() !== SHOP) {
+  const copy = new URLSearchParams(form);
+  copy.set("to", SHOP);
+  copy.set("subject", `[Copy to shop] ${mail.subject} · sent to ${to}`);
+  const copyRes = await fetch(`https://api.mailgun.net/v3/${mgDomain}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`api:${mgKey}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: copy.toString(),
+  });
+  console.log(copyRes.ok ? `Copy sent to ${SHOP}` : `WARN: shop copy failed ${copyRes.status}`);
+}
 
 // Record it on the PI so the order carries its own tracking number and a
 // second run can't double-send.

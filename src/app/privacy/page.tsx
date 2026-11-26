@@ -14,7 +14,7 @@ import { CONTACT_EMAIL, LEGAL_NAME, pageMetadata } from "@/lib/site";
  * If a vendor is ever added or removed, THIS PAGE IS PART OF THE CHANGE.
  */
 
-const LAST_UPDATED = "2026-09-09";
+const LAST_UPDATED = "2026-11-25";
 
 export const metadata = pageMetadata({
   title: "Privacy Policy",
@@ -105,9 +105,10 @@ export default function PrivacyPage() {
           emails. Receives your email address.
         </li>
         <li>
-          <strong>Shippo and USPS</strong> — shipping labels and delivery.
-          Receive your name and shipping address, because that is what a parcel
-          label is.
+          <strong>Shippo, UPS and USPS</strong> — shipping quotes at checkout,
+          labels and delivery. Receive your shipping address to price the
+          parcel, and your name and address on the label, because that is what
+          a parcel label is.
         </li>
         <li>
           <strong>Vercel</strong> — hosts the site and processes requests.

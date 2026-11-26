@@ -4,10 +4,10 @@ import {
   computeShippingCents,
   computeTaxCents,
   priceCart,
-  SHIPPING_FLAT_CENTS,
   SHIPPING_FREE_THRESHOLD_CENTS,
   FL_TAX_RATE,
 } from "./pricing";
+import { SHIPPING_FALLBACK_CENTS } from "./shipping-config";
 import { KIT_TIERS } from "./products";
 
 /**
@@ -43,10 +43,10 @@ describe("priceCart", () => {
   });
 });
 
-describe("computeShippingCents", () => {
-  it("charges the flat fee below the threshold", () => {
+describe("computeShippingCents (no live quote)", () => {
+  it("charges the fallback rate below the threshold", () => {
     expect(computeShippingCents(SHIPPING_FREE_THRESHOLD_CENTS - 1)).toBe(
-      SHIPPING_FLAT_CENTS
+      SHIPPING_FALLBACK_CENTS
     );
   });
 
@@ -95,10 +95,17 @@ describe("computeOrderTotals", () => {
     const t = computeOrderTotals(priced, "THESLIMECO5", "US", "FL");
 
     expect(t.discountCents).toBe(500);
-    expect(t.shippingCents).toBe(SHIPPING_FLAT_CENTS);
+    expect(t.shippingCents).toBe(SHIPPING_FALLBACK_CENTS);
     // 4500 discounted subtotal, and shipping is excluded from the base.
     expect(t.taxCents).toBe(Math.round(4500 * FL_TAX_RATE));
-    expect(t.taxCents).not.toBe(Math.round((4500 + SHIPPING_FLAT_CENTS) * FL_TAX_RATE));
+    expect(t.taxCents).not.toBe(Math.round((4500 + SHIPPING_FALLBACK_CENTS) * FL_TAX_RATE));
+  });
+
+  it("uses a live quote when one is passed, including 0", () => {
+    const priced = { subtotalCents: 5000, lines: [], description: "test" };
+    expect(computeOrderTotals(priced, null, "US", "GA", 1042).shippingCents).toBe(1042);
+    expect(computeOrderTotals(priced, null, "US", "GA", 0).shippingCents).toBe(0);
+    expect(computeOrderTotals(priced, null, "US", "GA", 1042).totalCents).toBe(6042);
   });
 
   it("reports an unknown code as an error without discounting", () => {

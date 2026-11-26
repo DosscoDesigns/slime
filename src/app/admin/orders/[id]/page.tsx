@@ -222,6 +222,8 @@ export default async function AdminOrder({
           orderId={order.id}
           hasTracking={Boolean(order.tracking)}
           shippingChargedCents={order.shippingCents}
+          customerServiceToken={order.shippingServiceToken}
+          customerQuoteCents={order.shippingQuoteCents}
           cancelled={Boolean(order.cancelledAt)}
         />
         <RefundAndCancel
